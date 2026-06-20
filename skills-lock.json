@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "humanizer-zh": {
+      "source": "op7418/Humanizer-zh",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "7bd195e3bcdcc24f078dfd4e3b3e37e8ac321c36f410a41241fc4175eab1825a"
+    },
+    "khazix-writer": {
+      "source": "KKKKhazix/khazix-skills",
+      "sourceType": "github",
+      "skillPath": "khazix-writer/SKILL.md",
+      "computedHash": "dc1b5671e404bd4e9abc79306251b134182b630550546a59f72195a8ee8a812b"
+    }
+  }
+}
