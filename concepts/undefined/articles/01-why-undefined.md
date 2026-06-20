@@ -1,563 +1,434 @@
 ---
-title: '为什么 JavaScript 会有 undefined'
+title: 为什么 JavaScript 会有 undefined
 created: 2022-12-11
 updated: 2026-05-28
 tags:
   - JavaScript
   - undefined
-description: '为什么 JavaScript 会把 binding 缺失、引用失败、completion 缺失等完全不同场景全部收敛到同一个值？本文从 Binding System、Reference System、Completion System 三个底层系统拆解 undefined 的本质——它不是空值，而是 ECMAScript 对"缺席结果"的统一编码。涵盖：undefined 非保留字的设计逻辑、void 的历史、binding 生命周期（var 提升 / TDZ / 函数参数）、引用失败的处理（property miss / typeof / 数组空洞）、Completion Record 的 universal fallback。'
+description: 从规范视角解析 undefined——ECMAScript 用它统一编码运行时缺席，覆盖 Binding、Reference、Completion 三套系统。
 status: evergreen
 ---
 
-JavaScript 的类型系统里有两个"空"——`null` 和 `undefined`。[上一篇](../../null/articles/01-null-essence.md)我们聊了 `null`，它的核心身份是"程序员的有意声明"。
+事情是这样的。
 
-那 `undefined` 呢？大多数教程给它的定义是"变量已声明但未赋值"。这个定义没错，但太浅了——它只描述了 `undefined` 出现的场景之一。
+我这两年一直在干一件事，复习 JavaScript。
 
-来看一组代码：
+不是那种翻翻书假装自己复习过了，是真的把核心知识点一个一个捡起来重新啃。我甚至专门建了个仓库叫 js-againn，名字里的 n 就是复习次数的变量，n 等于 1、2、3，一直递增下去。
 
-```js
-var x;
-x;                // undefined —— 声明了但没赋值
+为啥要这么干呢，因为我发现一个事，写 JS 写了这么多年，真到讲不清楚的地方，全是那些最基础的东西。
 
-({}).foo;         // undefined —— 属性不存在
+比如 undefined。
 
-function f() {}
-f();              // undefined —— 函数没有 return
+坦率的讲，我以前一直觉得自己是懂 undefined 的。不就是变量声明了没赋值嘛，这有啥难的。每次面试别人也这么问，每次被面试也这么答，答了这么多年，从来没翻过车。
 
-typeof notExist;  // 'undefined' —— 变量根本没声明
-```
+直到这次我又把 undefined 捡起来重新啃，啃到一半我愣住了。。。
 
-这四个场景涉及的语言机制完全不同——binding 初始化、属性查找、函数调用、Reference Record——但引擎的回退结果一样：`undefined`。
+我发现我一直答的那个答案，它只覆盖了 undefined 的一小部分。
 
-**为什么 JavaScript 会把如此不同的失败场景，全部收敛到同一个值？**
-
-这才是全文真正要回答的问题。
-
-答案是：**`undefined` 不是"空值"，而是 ECMAScript 对"缺席结果"的统一表示。**
-
-为了把这个论点讲透，我们需要拆开语言的三个底层系统——Binding System、Reference System、Completion System——看 `undefined` 在每个系统中扮演的角色。最后你会发现，这三个系统共享同一个回退出口。
-
-但在进入这三个系统之前，先回答一个最反直觉的问题：`undefined` 为什么不是保留字？
+就像你跟人说我懂北京，结果人家一问，你只去过天安门。
 
 ---
 
-## undefined 为什么不是保留字
-
-要理解 `undefined` 的本质，最反直觉的起点是：**它不是保留字。**
-
-### 字面量 vs 标识符
-
-字面量（literal）是源代码中表示某个**固定值**的符号。`100` 是字面量，`"hello"` 是字面量，`true` 和 `false` 也是字面量。`null` 是字面量，也是保留字——你在代码里写 `null`，引擎百分之百知道你在说什么。在 AST 层面，`null` 是一个 `Literal` 节点，和 `100`、`"hello"` 是同一类东西。
-
-但 `undefined` 不是。它是一个 `Identifier` 节点——和变量名 `foo` 是同一类东西：
-
-![AST Explorer](https://raw.githubusercontent.com/chuenwei0129/my-picgo-repo/master/js/SCR-20220509-g29.png)
-
-这意味着 `undefined` 在语法层面不是"一个固定值的符号"，而是一个**全局变量的引用**——JavaScript 引擎内置了这个全局变量，它的值恰好是 `undefined`。`NaN` 和 `Infinity` 也同理。
-
-### 历史根源：从 Java 抄来的保留字列表
-
-Brendan Eich 亲自解释过这件事：最初 JavaScript（当时还叫 LiveScript）根本没有 `undefined` 这个**变量名**——只有 `undefined` 这个**值**，用 `void` 运算符获取（对表达式求值、丢弃结果、返回 undefined——下文会详细讲）。
-
-JS 1.0 的"未来保留字"列表是从 Java 抄来的，里面有 `enum`（至今没用上）、`goto`（永远不会用），但没有 `undefined`——因为 Java 里没有这个概念。等到 ES3 时代想加，已经来不及了——程序员已经在用 `var undefined = void 0` 这样的代码，改成保留字会直接破坏线上页面。
-
-最终方案是：把 `undefined`、`NaN`、`Infinity` 做成全局对象的只读属性。ES5 进一步把它们设为 `writable: false, configurable: false`——不可写、不可删，行为上已经很接近保留字了。实际上类似的"伪关键字"还不止这三个——`eval`、`await`、`let`、`yield`、`static` 在一定条件下也都能做变量名，都是历史兼容性导致的。
-
-### 遮蔽：生产中的静默 Bug
-
-这不只是理论问题。`undefined` 在全局作用域里你改不动它——ES5 已经锁死了：
+真的，你先看四段代码。
 
 ```js
-var undefined = 1;
-console.log(undefined); // undefined —— 全局的没被覆盖
+var x;
+x;
+// undefined
+
+({}).foo;
+// undefined
+
+function f(){}
+f();
+// undefined
+
+typeof a;   // a 从未声明
+// undefined
 ```
 
-但**局部作用域可以遮蔽它**——用 `const` 或 `let` 声明一个名为 `undefined` 的局部变量（当然你永远不该这么做，这里只是演示机制），这个作用域里所有的 `undefined` 就不再是引擎的那个值了：
+你盯着看一会儿。
+
+这四段代码的语法特征毫无共同之处。`var x;` 是变量声明，`obj.foo` 是属性访问，`f()` 是函数调用，`typeof a` 是类型运算。
+
+四套完全不同的语言机制。
+
+结果全部收敛成同一个值，undefined。
+
+为啥。
+
+为啥四个八竿子打不着的机制，最后吐出来的都是 undefined。这件事我以前从来没认真想过，每次遇到 undefined 就条件反射地套「声明了没赋值」那套，从来没意识到这套答案根本解释不了剩下三种情况。
+
+我寻思了一下，没寻思明白。
+
+然后就去翻 ECMAScript 规范。
+
+翻完我才意识到，我这些年一直答错了一个更根本的问题。
+
+undefined 这玩意，根本不是某种具体的空值。
+
+> 它是 ECMAScript 对运行时「缺席」，absence，的统一编码。
+
+这句话我先撂这儿，你先记着。后面我一层一层给你剥开，你就知道这个抽象有多漂亮。
+
+回到开头那四段代码。
+
+它们其实分别对应了 ECMAScript 里三种完全不同的缺席。**值还没来，值找不到，值没产生。** 这三种缺席来自三套彼此独立的系统，本来完全可以各自有一个专属的值。
+
+那为啥最后都变成了 undefined 呢。
+
+这是整件事最关键的一步，也是我这次复习最爽的一个发现。
+
+你想想看，ECMAScript 完全可以为不同的缺席设计不同的结果。比如值还没到，就给个 Uninitialized。属性不存在，给个 MissingProperty。执行没产生结果，给个 NoCompletion。
+
+听着是不是更精确，更优雅，更像一个设计良好的语言该有的样子。
+
+但你顺着往下想一步，代价立刻就出来了。
+
+程序员写判断的时候，必须为每一种缺席单独处理。判断值还没到，写 `if (x === Uninitialized)`。判断属性缺失，写 `if (x === MissingProperty)`。判断没有返回值，写 `if (x === NoCompletion)`。
+
+每一个语言机制，默认参数、可选链 `?.`、空值合并 `??`、解构默认值、JSON 序列化，都得为「这几种缺席分别怎么回退」各写一套规则。
+
+状态空间爆炸，语言复杂度爆炸。
+
+你写一行代码要在脑子里过一遍这是哪种缺席，该走哪条回退路径，特么的累不累。
+
+ECMAScript 选了完全相反的方向。
+
+absence，直接映射到 primitive undefined。
+
+> 一种缺席，一个值，一条判断路径。
+
+代价当然有，你没法从 undefined 本身看出它到底来自哪个系统。但这恰恰就是设计意图。绝大多数时候你根本不需要分辨，你只需要知道，这里本应有结果，但缺席了。
+
+理解了这个选择，再看 ECMAScript 的三套缺席系统，就不再是一堆零散的规则了。
+
+它们是同一个设计哲学的三次落地。
+
+---
+
+我一层一层给你讲。
+
+## 第一套：Binding System，值还没来
+
+每个变量声明，其实都在创建一个 binding，一个名字到槽位的映射。引擎真正操作的不是变量名，是这个 binding。
+
+`var x = 1;` 在规范里经历两个阶段。第一步创建 binding，`x` 指向一个空槽位。第二步把值放进去，`x` 指向 1。
+
+问题来了。binding 已经创建了，但程序员还没给值，这个槽位里该放什么。
+
+ECMAScript 的答案是 undefined。
+
+```js
+console.log(x);   // undefined
+var x = 1;
+```
+
+这件事我以前一直归因到「声明提升」，觉得是 hoisting 的副作用。翻完规范才知道，hoisting 只是表象，底下更根本的事实是，binding 已存在，值尚未到达，规范用 undefined 填充这个窗口期。
+
+binding 已创建，用 undefined 初始化，赋值发生，binding 存入真实值。这条链条走的就是 undefined。
+
+函数参数也是同一个机制。调用者没传参，但参数 binding 已经创建，引擎自动填 undefined。
+
+ES6 之后这里有个很妙的细节，我想单独说一下。
+
+引入 `let`/`const` 之后，binding 的生命周期被拆成了两段，exists，initialized，readable。
+
+```js
+console.log(a);   // ReferenceError
+let a = 1;
+```
+
+binding 已经存在，但还没初始化，引擎拒绝读取，这就是 TDZ，Temporal Dead Zone。
+
+注意啊，这并不是对 undefined 的否定。因为 `let a; console.log(a);` 出来依然是 undefined。ES6 真正改变的不是 undefined 本身，而是这句话：**binding exists ≠ binding is readable**。
+
+只有初始化之后，缺席才重新被编码成 undefined。
+
+这是第一套系统，值还没来。
+
+## 第二套：Reference System，值找不到
+
+Binding 处理的是值还没到。Reference 处理的是另一种缺席，引用的语法已经写出来了，但引擎找不到它指向的目标。
+
+```js
+const obj = {};
+obj.foo;          // undefined，属性不存在
+
+typeof a;         // 'undefined'，a 从未声明
+
+[1,,3][1];        // undefined，数组空洞
+```
+
+一个是属性，一个是变量名，一个是索引。背后却是同一个问题，引用解析失败时怎么办。
+
+先说属性缺失。
+
+```js
+const obj = {};
+obj.foo;          // undefined
+'foo' in obj;     // false
+```
+
+对象里压根没有 foo 这个属性。执行 `obj.foo` 会触发对象内部方法 `[[Get]]`，查找 foo，命中就返回值，没命中就返回 undefined。
+
+这里的 undefined 不是对象存进去的，是查找失败之后引擎给的结果。
+
+这里有个很自然的疑问，我以前也卡过。为啥 `obj.foo` 安全，`obj.foo.bar` 却抛 TypeError。
+
+因为第一步 `obj.foo` 已经结束了，结果是 undefined。第二步变成了 `undefined.bar`，你对一个 primitive 取属性，当然抛异常。
+
+ES2020 的可选链 `obj.foo?.bar`，干的就是承认 property miss 会产生 undefined 这件事，然后允许这种缺席安全地往后传播。它不创造 undefined，它只是让 undefined 流动。
+
+接着说数组空洞，这个我特别喜欢。
+
+```js
+[1,,3]                     // 索引 1 是空洞
+1 in [1,,3];               // false，连属性都没有
+1 in [1, undefined, 3];    // true
+```
+
+你看，`[1,,3]` 的索引 1 是空洞，`1 in` 返回 false，说明这个位置连属性都没有。而 `[1, undefined, 3]` 的索引 1 是真的有个值为 undefined 的属性，`1 in` 返回 true。
+
+但两者访问结果都是 undefined。
+
+因为数组读取其实也是属性读取，走的是同一条路径，HasProperty 为 false，返回 undefined。又统一上了。
+
+最后说 typeof，这个最骚。
+
+```js
+typeof a;         // 'undefined'，a 从未声明
+a;                // ReferenceError
+```
+
+绝大多数表达式都要求把引用解析成实际值，解析失败就抛 ReferenceError。ResolveBinding 成功就拿到值，失败就 ReferenceError。
+
+但 typeof 有一条规范级特权，拿到一个 unresolvable Reference 的时候，不抛异常，直接返回 "undefined"。
+
+所以 typeof 真正特殊的地方，不是它认识 undefined，而是它是 ECMAScript 里**唯一允许 unresolvable Reference 安静失败的运算符**。
+
+这背后不是什么语言哲学，是 Web 兼容。海量代码依赖 `if (typeof Promise !== 'undefined')` 做特性检测，要是这里抛异常，整个 Web 平台都得跟着抖三抖。
+
+讲到这里我必须停下来插一句，这块最能体现前面那个「统一编码」的设计有多值。
+
+你看默认值机制。
+
+```js
+const {a = 1} = {};          // a === 1，{}.a 是 undefined，启动默认值
+const {a = 1} = {a: null};   // a === null，null 不触发回退
+```
+
+函数默认参数、解构默认值、空值合并 `??`，判断的都不是假值，是缺席。拿到的是 undefined 就启动默认值，不是就用原值。
+
+你想想看，如果前面 ECMAScript 真的给每种缺席各发一个值，那这些默认机制就得为 Uninitialized、MissingProperty、NoCompletion 各写一套回退规则。
+
+正因为所有缺席都被统一编码成 undefined，这些机制只需要一条规则就能覆盖所有场景。
+
+这就是统一编码的回报。我读到这儿的时候是真的拍了一下大腿，前面那个看似偷懒的设计，在这儿等着收利息呢。
+
+第二套系统讲完了，值找不到。
+
+## 第三套：Completion System，值没产生
+
+这一种缺席最隐蔽，执行结束了，但什么结果都没产生。
+
+```js
+function f(){}
+f();              // undefined
+
+eval("var x = 1;");
+// undefined
+```
+
+答案藏在 ECMAScript 最容易被忽略的一套机制里，Completion Record。
+
+这一节我要先打个预防针。前两套系统你都能在代码里直接对应，`var x;` 就是 binding，`obj.foo` 就是引用解析。但 Completion Record 不一样，它是规范**内部**的记账机制，你在 JS 代码里根本摸不到它，平时全藏在引擎里，只在 `eval()` 这种极少数地方会漏出来一点。所以读这节先别急着在脑子里找代码对应，跟着下面这个比喻走。
+
+你平时理解的执行，是「执行这行代码」。
+
+但规范不这么说。
+
+规范说的是，对每一个语法结构求值，表达式也好，语句也好，声明也好，函数体也好，每一个都返回一个 Completion Record。
+
+你就把它想成一个**信封**。引擎每对一段代码求值，就给你一个信封，里面装三格。[[Type]] 记录这段代码是 normal（正常结束），还是 return 了，还是 throw 了，还是 break/continue。[[Value]] 是求出来的结果。[[Target]] 是 break/continue 要跳到哪个标签。
+
+绝大多数信封的 [[Type]] 都是 normal，[[Value]] 就是表达式的结果。比如 `1 + 2` 这个信封，类型 normal，值 3，规范写作 `NormalCompletion(3)`。
+
+记一件事就够了，每段代码的执行结果不是一个光秃秃的值，是一个装着「类型 + 值 + 目标」的信封。
+
+还有一层你读规范时大概率会卡的地方。信封不是一个函数只产出一个，是**逐语法结构、逐层向上**生成的。一个函数体里有好几条语句，每条都各自产出一个信封，块语句把它们收成一个，函数调用再把函数体的信封作为最终结果。所以 `f()` 你拿到的那个 undefined，不是凭空冒出来的，是函数体里最后那个「求值了但没结果」的信封一路收上来，最后暴露给你的。
+
+关键在 [[Value]] 这一格。
+
+有些语句根本不为产生值。比如 `var x = 1;`，它的职责是创建变量、把值塞进去，它本身不计算出一个值。那这个信封的 [[Value]] 该填什么。
+
+规范给它填了个占位符，叫 empty。
+
+`var x = 1;` 在规范层面更接近 `信封 { [[Type]]: normal, [[Value]]: empty }`，不是 `NormalCompletion(undefined)`。
+
+> **empty 不是 undefined。**
+
+这句话是整节最关键的一行，读慢一点。
+
+empty 的意思是，求值结束了，但这段代码本来就没打算产出值，所以值那一格空着，填个占位符。它是规范内部的记账符号，你看不到。
+
+undefined 是一个真实的值，会出现在程序里，你拿得到。
+
+两个完全不同的东西。一个在规范内部，一个在你能碰到的运行时。
+
+那程序员最后看到的为啥是 undefined 呢。
+
+因为规范有个辅助操作叫 UpdateEmpty，规则极简。拿到一个信封，[[Value]] 是 empty 就换成 undefined，不是 empty 就不动。
+
+于是 `信封 { 值: empty }` 经 UpdateEmpty 变成了 `信封 { 值: undefined }`，也就是 `NormalCompletion(empty)` 变成了 `NormalCompletion(undefined)`。
+
+到这一步你才看到 undefined。
+
+所以 undefined 并不是 Completion 天生携带的默认值，它是 Empty Completion 暴露给用户代码时的统一编码。和 Binding、Reference 走的是同一条哲学，先有一个内部的缺席状态，最后统一编码成 undefined 给你。
+
+这里还有个细节我觉得特别精巧，`return;` 和「没有 return」。
+
+```js
+function f(){}
+// 和
+function f(){ return; }
+```
+
+结果一样，都是 undefined。但信封不一样。
+
+没有 return，函数跑到底自然结束，信封是 `{ [[Type]]: normal, [[Value]]: empty }`，再经 UpdateEmpty 把 empty 换成 undefined。这个 undefined 是 UpdateEmpty **补**出来的。
+
+而 `return;`，是你主动写了 return，引擎直接造一个 `{ [[Type]]: "return", [[Value]]: undefined }` 的信封。这里的 undefined 是**直接写进去**的，不经过 UpdateEmpty。
+
+> 注意 [[Type]] 都不一样了，一个 normal 一个 return。只是 [[Value]] 恰好都是 undefined，所以你从外面看结果一样。表现一致，Completion Type 并不相同。
+
+还有 void。
+
+```js
+void (1 + 2)   // undefined
+```
+
+`1 + 2` 本来信封值是 3。void 干的事，就是把这个 3 扔掉，硬把信封值改成 undefined。所以 void 不是「获取 undefined」，它是说，我知道这里有结果，但我要把它重新编码成缺席。
+
+undefined 负责表示缺席，void 负责制造缺席。两者互补，严丝合缝。
+
+讲到这儿，三种缺席全部收束到同一个值了。
+
+Binding 是值还没来，Reference 是值找不到，Completion 是值没产生，全部汇入 primitive undefined。
+
+---
+
+但我还想再聊一点，这也是我这次复习里另一个「原来如此」的时刻。
+
+undefined 是引擎说的没有。那程序员自己想表达没有，用啥。
+
+答案是 null。
+
+```js
+let user;          // user === undefined，引擎填的
+let user = null;   // 程序员明确说「这里应该有值，但现在为空」
+```
+
+undefined 是运行时缺席的被动产物，null 是程序员写出来的主动语义。
+
+一个函数查不到用户，更合理的是 `return null;`，意思是「我找过了，没有」。而 `return undefined;` 更像「我忘了返回」。DOM API 体现了这种区分，`document.querySelector(".item")` 找不到返回 null，因为查找已完成，结果为空。而 `obj.foo` 返回 undefined，因为根本没找到这个属性。
+
+> undefined 是引擎说的没有，null 是程序员说的没有。
+
+默认值机制正好沿用了这条线，null 不触发回退，因为「我拿到了，只是空的」应被尊重。undefined 触发回退，因为「我没拿到」可以补救。JSON 也一样，undefined 是运行时缺席，JSON 无法表达就省略。null 是显式数据，保留。
+
+你看，连 null 和 undefined 的分工，都是顺着 absence 这条主线长出来的。
+
+---
+
+好了，可以收了。
+
+回到开头那个问题，为啥 JavaScript 会有 undefined。
+
+因为 ECMAScript 在运行时会不断遇到缺席。值还没到，值找不到，值没产生。这些缺席来自三套彼此独立的系统，本可以各自有一个专属的值。
+
+但 ECMAScript 没这么做。它把所有运行时缺席统一编码成 undefined，换取了语言复杂度的塌缩。默认值、可选链、空值合并只需要一条规则，程序员只需要判断一种缺席。代价是 undefined 本身不再携带「来自哪个系统」的信息，但那正是设计意图。
+
+整个模型可以概括成一张图，运行时缺席分三路：
+
+- **Binding** → 值还没来
+- **Reference** → 值找不到
+- **Completion** → 值没产生
+
+三路全部汇入 primitive undefined。而程序员主动表达缺席，走 null。
+
+这就是 ECMAScript 的缺席语义模型，Absence Semantics。
+
+> undefined 不是某一种空，也不是某一种失败。它是 ECMAScript 在运行时反复使用的一个统一信号。
+
+这里本来应该有结果，但最终什么都没有得到，于是语言把这种缺席编码成了 undefined。
+
+我这次复习，n 又加了一。但这一遍我跟之前所有的都不一样，之前我记住的是「声明了没赋值」，这一遍我终于看清了 absence 这层。
+
+其实吧，写 JS 这么多年，很多我以为自己懂的东西，都只是停在第一层答案。真正往下挖一层，往往能看见一个更漂亮的设计在下面等着。
+
+undefined 就是这样。**它不是一个值，它是一种语义。**
+
+好了，这篇就到这。
+
+---
+
+如果你还觉得没看够，我再补两个彩蛋。
+
+## 彩蛋一：undefined 为啥不是保留字
+
+另一种空值 null 是保留字，语法树里它是个字面量 Literal，跟 42、"hello"、true 一个地位，引擎一看到就知道是那个固定值。但 undefined 不是，它在语法树里是个 Identifier，跟我们随便起的变量名 foo、bar、user 是同一类节点。
+
+你想想这说明了啥，undefined 语法上根本不是什么特殊符号，它就是当前作用域里解析出来的一个名字。
+
+你写 `console.log(undefined)`，底下其实更接近 `ResolveBinding("undefined")`，拿到名字，再 `GetValue`，最后才得到那个 primitive undefined。ECMAScript 只是在全局对象上放了这么个属性，`globalThis.undefined`，值是 undefined。同类的还有 NaN 和 Infinity。
+
+那为啥不像 null 那样给它个语法地位呢。
+
+历史原因，太晚了。
+
+早期 JavaScript 压根没有 undefined 这个全局名字，程序员靠 `void 0` 拿这个值。后来语言想提供 undefined 当统一入口，但这时候大量网页已经存在了，甚至有人写过 `var undefined = 1;` 这种狠活。Web 平台最高的原则就是 Don't break the web，你要是突然宣布 undefined 成关键字，老网页当场就崩了。
+
+于是 ECMAScript 选了另一条路，不改语法，只在全局对象上加属性。ES5 又进一步把它锁死，writable 设成 false，configurable 也设成 false。行为上越来越像保留字，语法上始终不是。
+
+它甚至还能被局部遮蔽，你敢信。
 
 ```js
 {
-  const undefined = 123;         // ⚠️ 永远不要这样写
-  console.log(undefined);        // 123
-  console.log(typeof undefined); // "number"
+    const undefined = 123;
+    console.log(undefined);          // 123
+    console.log(typeof undefined);   // "number"
 }
 ```
 
-任何依赖 `undefined` 做判断的代码——`=== undefined`、`typeof x === 'undefined'`——全都会出问题。而且这种 bug 是静默的，没有报错，只是行为悄悄变了。
+你看，在块作用域里重新声明一个 undefined，赋值 123，里面 typeof 出来直接是 "number"。这说明 `typeof undefined` 里的那个 undefined，照样是个普通 Identifier，先做名字解析，再做 typeof。
 
-### 但这恰恰印证了 undefined 的本质
+所以 `x === undefined` 理论上并不是绝对安全的。这也是为啥历史上很多库更爱写 `void 0`，或者 `typeof x === "undefined"`，就是怕 undefined 这个名字被人在局部搞鬼。
 
-`undefined` 不是保留字这件事，表面上是历史包袱，但它指向一个更深的逻辑：**`undefined` 在规范层面当然是一个 primitive value（属于 Undefined Type）；但在语言设计层面，它承担的是"运行时缺席状态"的统一表示。**
+语言当然也留了个永远可靠的出口，还是 `void 0`。
 
-`null` 是程序员主动写的——"我声明这里为空"，所以它需要字面量。但 `undefined` 描述的是引擎自动产生的运行时状态——"取值失败后的回退"。ECMAScript 的设计重心并不在让开发者主动制造 `undefined`——它更偏向"语言默认产生"，而非"程序员主动表达"。既然如此，给它配一个字面量也就不是语言的设计优先级了。
+## 彩蛋二：void 这玩意到底是为谁生的
 
-JavaScript 的选择是：让 `undefined` 成为一个全局属性，而不是字面量。这个决定带来了副作用——`undefined` 可以被遮蔽——但它在概念上是自洽的。
-
-### void：undefined 的影子保留字
-
-`void` 运算符对任何表达式求值，然后丢弃结果，返回 `undefined`：
-
-```js
-void 0;        // undefined
-void 1;        // undefined
-void 'hello';  // undefined
-void (1 + 2);  // undefined
-```
-
-大多数教程把 `void 0` 说成"获取 undefined 的可靠方式"。这话没错，但没有解释一个关键问题：**`void` 运算符到底是为谁而存在的？**
+大多数教程把 `void 0` 说成「获取 undefined 的可靠方式」。这话没毛病，但漏了最关键的一件事，void 运算符最初到底是为谁存在的。
 
 答案是 `javascript:` 协议的链接。
 
-在早期的 Web 中，还没有 `onclick` 事件。想要网页产生变化，要么打开一个 HTTP 新页面，要么用 `javascript:` 协议的链接，靠表达式返回的新 HTML 修改当前页面：
+早期 Web 还没有 onclick 事件。你想让网页动起来，要么打开一个 HTTP 新页面，要么用 `javascript:` 协议的链接，靠表达式返回的新 HTML 去改当前页面。
 
 ```html
 <a href="javascript:someExpression">点击我</a>
 ```
 
-问题来了：如果 `someExpression` 的求值结果不是 `undefined`，浏览器会用这个值**覆盖整个页面的 `innerHTML`**。你写了一个计算逻辑，结果把整个页面清空了。
+问题来了。如果 someExpression 求值结果不是 undefined，浏览器会拿这个值直接覆盖整个页面的内容。你本来只想跑段计算逻辑，结果一回头，整个页面被清空了。
 
-`void` 运算符就是为了解决这个问题——它让你可以执行任意表达式，但确保返回值是 `undefined`，不会覆盖页面内容：
+void 运算符就是为解决这个而生的。它让你能执行任意表达式，但保证返回值是 undefined，不会去覆盖页面。
 
 ```html
 <a href="javascript:void doSomething()">安全的链接按钮</a>
 ```
 
-后来有了事件监听（`onclick`），`javascript:` 协议链接逐渐退出主流，但 `void` 留了下来。它的语义从"防止覆盖页面"泛化为更通用的含义：**"执行这个表达式，但刻意丢弃结果，返回 undefined"**。
+后来有了事件监听 onclick，`javascript:` 协议链接慢慢退出了主流。但 void 留下来了，它的语义从「防止覆盖页面」泛化成了更通用的意思，执行这个表达式，但刻意丢弃结果，返回 undefined。
 
-```js
-// IIFE 中避免返回值干扰外部表达式
-void function() {
-  console.log('我执行了，但不影响外层表达式的值');
-}();
+你看，兜兜转转，void 的起源还是回到了缺席这件事上。当年它是为了「别让结果毁掉页面」，现在是「我知道有结果，但我主动抹成缺席」。
 
-// 箭头函数的隐式返回被 void 吃掉
-const handler = () => void doSomething(); // 永远返回 undefined
-```
-
-而因为 `undefined` 不是保留字——它是一个可以被遮蔽的全局属性——`void` 恰好承担了另一个角色：**在 `undefined` 被遮蔽时，它是获取真正 undefined 值的唯一可靠方式**。
-
-```js
-{
-  const undefined = 123;
-  console.log(undefined === 123);    // true —— 被遮蔽了
-  console.log(void 0 === undefined); // false —— void 0 返回引擎内部的 undefined 值，而标识符 `undefined` 现在指向 123
-}
-```
-
-> `void` 最初为 `javascript:` 协议链接而生，后来成了 `undefined` 的"影子保留字"——它让 `undefined` 虽然不是保留字，却有了一个可靠的、不会被遮蔽的表达方式。这也是为什么压缩工具会把 `undefined` 替换成 `void 0`——三个字符 vs 九个字符，而且绝对可靠。
-
-以上解释了 `undefined` 为什么不是保留字——它的设计重心不在"主动表达"，而在"引擎自动产生"。
-
-那引擎到底在哪些系统中自动产生 `undefined`？我们需要从三个层面拆开来看。第一个：Binding System。
-
----
-
-## Binding System：undefined 是 binding 生命周期的默认值
-
-理解 `undefined` 最好的切入点不是类型表，而是 **binding 的生命周期**。
-
-ECMAScript 中每个变量声明都会在作用域中创建一个 binding——一个"名字到值的映射"。关键在于：**binding 的创建和初始化之间，存在一个时间窗口。** 不同的声明方式对这个窗口的处理不同，但它们最终都指向 `undefined`。
-
-### var：创建即初始化为 undefined
-
-```js
-console.log(x); // undefined  ← 这里发生了什么？
-var x = 1;
-console.log(x); // 1
-```
-
-大多数教程说"声明提升了，值没有"。但这句话没有解释一个关键问题：**提升之后、赋值之前，那个绑定（binding）里到底装的是什么？**
-
-答案是 `undefined`。
-
-JavaScript 引擎在执行代码之前会先做一遍"编译"（准确说是解析+编译）。遇到 `var x`，引擎做了两件事：
-
-1. **在当前作用域中创建一个绑定（binding）**——给 `x` 分配一个名字
-2. **把这个绑定初始化为 `undefined`**
-
-然后才开始逐行执行。执行到 `console.log(x)` 时，binding 已经存在，里面的值是 `undefined`。执行到 `var x = 1` 时，才把 `1` 赋进去。
-
-> **`undefined` 是引擎在 binding 创建和赋值之间的默认值。** 它标记的是"binding 已存在，但程序员还没给值"这个中间状态。
-
-这也是为什么 `undefined` 不需要字面量——这个中间状态主要是引擎自动产生的，语言的设计重心并不在主动表达它。你当然可以写 `return undefined` 来显式返回，但大多数情况下，`undefined` 是引擎给你的，不是你找引擎要的。
-
-### 函数参数：同样的 binding 机制
-
-函数参数也是 binding：
-
-```js
-function greet(name) {
-  console.log(name); // 传了就是实参，没传就是 undefined
-}
-
-greet('Alice'); // 'Alice'
-greet();        // undefined
-```
-
-当你调用 `greet()` 时，引擎创建了参数 binding `name`，但调用者没有提供值。这个 binding 被初始化为 `undefined`——和 `var` 提升一模一样。
-
-> 不管是 `var` 提升还是缺省参数，`undefined` 出现的时机都是同一个：**binding 被创建了，但还没有被填入程序员提供的值。**
-
-### let/const：binding 存在 ≠ binding 可读
-
-如果 `var` 提升是 `undefined` 的主场——"binding 一创建就初始化为 undefined"——那 ES6 引入的 `let`/`const` 就是对这个机制的一次拆分。
-
-```js
-// var：先给 undefined，再赋值
-console.log(a); // undefined
-var a = 1;
-
-// let：直接拒绝你
-console.log(b); // ReferenceError: Cannot access 'b' before initialization
-let b = 1;
-```
-
-`let` 和 `const` 同样有提升——引擎在编译阶段就知道 `b` 存在。但 `let`/`const` **并不是否定 `undefined` 本身**。它们真正否定的是：
-
-> "binding 一创建就立刻可读"
-
-ES6 把 binding 的生命周期拆成了两个阶段：
-
-```text
-binding exists（编译阶段，名字进入作用域）
-      ↓
-binding initialized（执行阶段，声明语句运行时）
-```
-
-从作用域开始到声明语句之间的这段"窗口期"，就是 **Temporal Dead Zone（暂时性死区）**。在这段时间里，binding 存在但未初始化——引擎调用 `GetBindingValue` 时会直接 throw，而不是返回 `undefined`。
-
-这和 `var` 的区别是 spec 层面的：
-
-| | `var` | `let`/`const` |
-|---|---|---|
-| 编译阶段 | 创建 binding，初始化为 `undefined` | 创建 binding，标记为 uninitialized |
-| 执行到声明语句 | 赋值（覆盖之前的 `undefined`） | 初始化（标记为 initialized） |
-| 声明前读取 | 返回 `undefined` | `GetBindingValue` 抛 ReferenceError |
-
-注意，`let` 最终还是会走到 `undefined`：
-
-```js
-let x;
-console.log(x); // undefined —— 声明语句执行后，未显式赋值的 let 也是 undefined
-```
-
-所以 TDZ 的重点不是"undefined 不好用"，而是**禁止访问 uninitialized binding**。`undefined` 本身没问题，问题是你不能在 binding 还没初始化的时候就去读它。
-
-> **`var` 说："binding 创建即初始化为 undefined。"**
-> **`let` 说："binding 存在和 binding 可读是两件事。"**
-
-两种设计，背后都是对 binding 生命周期的不同切分。
-
-### 小结：Binding System 中的 undefined
-
-在 Binding System 中，`undefined` 出现在两种情形：
-
-| 情形 | 机制 | 结果 |
-|---|---|---|
-| binding 已创建但未赋值 | `var` 提升、函数缺省参数、`let` 声明后未赋值 | → `undefined` |
-| binding 不存在 | 未声明的变量（`typeof` 之外的访问） | → ReferenceError |
-
-第二种情形——"binding 不存在"——属于下一个系统：Reference System。
-
----
-
-## Reference System：ECMAScript 如何处理"引用失败"
-
-当你写 `obj.foo` 或 `x`（一个变量名）时，引擎需要做一次"引用解析"——找到这个名字对应的实际值。如果找不到，会发生什么？
-
-### 属性查找失败：property miss
-
-```js
-const obj = {};
-obj.foo; // undefined
-```
-
-`obj.foo` 触发的是 `[[Get]]` 操作。引擎在 `obj` 上找不到 `foo` 属性——不是"找到了但值是 undefined"，而是**属性根本不存在**（`[[HasProperty]]` 返回 `false`）。但 `[[Get]]` 不会抛错，而是安静地返回 `undefined`。
-
-这是 ECMAScript 最早的"引用失败 → undefined"约定。
-
-### 可选链：让 property miss 不会级联爆炸
-
-属性不存在时返回 `undefined`，本身没问题。但当你链式访问时，问题就来了：
-
-```js
-const obj = {};
-obj.foo.bar; // TypeError: Cannot read property 'bar' of undefined
-```
-
-`obj.foo` 返回 `undefined`，然后尝试访问 `undefined.bar`——炸了。可选链 `?.` 就是为了解决这个问题——它在每一层遇到 `undefined`（或 `null`）时提前短路，不再继续往下取值：
-
-```js
-obj.foo?.bar; // undefined —— foo 不存在，短路，直接返回 undefined
-```
-
-可选链的本质是：**承认 property miss 会产生 undefined，并且让这个 undefined 可以安全地传播而不抛错。**
-
-### 解构赋值：只有 undefined 能触发默认值
-
-解构中的默认值和函数参数默认值共享同一个规则：**只有 `undefined` 能触发 `=` 后面的默认值**。
-
-```js
-const { a = 1 } = {};           // a = 1 —— 属性不存在，值为 undefined
-const { a = 1 } = { a: null };  // a = null —— null 不触发
-const { a = 1 } = { a: 0 };     // a = 0 —— 0 不触发
-```
-
-这再次印证了 `undefined` 的特殊身份：它是唯一一个被语言识别为"缺席"的值——`null` 是"有意为空"，`0` 和 `""` 是合法值，只有 `undefined` 触发回退。
-
-解构有一个更微妙的点——你可以"穿透" `undefined`：
-
-```js
-const { a: { b } } = { a: undefined };
-// a 是 undefined，然后尝试解构 undefined.b
-// TypeError: Cannot destructure property 'b' of undefined
-```
-
-这和 `?.` 可选链处理的是同一个问题——解构没有"可选解构"语法，所以你必须确保路径上的每个值都不是 `undefined` 或 `null`（详见 [[JavaScript/Null|null 的本质]]）。
-
-### typeof：唯一不需要 resolve Reference 的运算符
-
-```js
-typeof notDeclared; // 'undefined' —— 不会报错！
-notDeclared;        // ReferenceError —— 直接炸了
-```
-
-`typeof` 对未声明变量返回 `'undefined'` 而不是抛错——**在所有 JavaScript 运算符中，这是独一无二的行为**。没有任何其他运算符有这个特权。
-
-为什么？spec 层面的原因很精确：大多数运算符在操作一个变量时，会先 ResolveBinding——尝试找到这个 binding 对应的值。如果 binding 不存在，直接抛 ReferenceError。但 `typeof` 是唯一一个**允许 Reference Record 不 resolve 就直接返回**的运算符。它不试图取值，只问"这个东西的类型标签是什么"——binding 不存在？那类型就是 `'undefined'`。
-
-这个设计不是为了 `undefined` 的哲学，而是**web 兼容性的刚需**。历史上大量代码用 `typeof x !== 'undefined'` 做 feature detection：
-
-```js
-if (typeof IntersectionObserver !== 'undefined') {
-  // 浏览器支持这个 API
-}
-```
-
-如果 `typeof` 对未声明变量也会抛 ReferenceError，这种检测模式就不可能存在。`typeof` 的"安全网"特权，本质上是 web 平台演化中沉淀下来的兼容性约定。
-
-> 💡 **历史彩蛋**：`typeof document.all` 返回 `'undefined'`，尽管它是一个对象。这是 HTML 规范故意为之，让老代码的 `if (document.all)` 检测失效——它是整个语言中唯一一个 `typeof` 的规范级例外。这个案例说明 `typeof x === 'undefined'` 的语义比"类型标签"更广——它在问"这个东西对你的代码是否可见"。
-
-### Reference System 的深层逻辑
-
-`typeof` 的特殊性揭示了一个更深的事实：
-
-```js
-typeof notDeclared; // 'undefined'
-```
-
-这里的 `notDeclared` **连 binding 都不存在**——它不是"声明了但没赋值"，而是根本不在任何作用域里。但语言依然把它映射到了 `'undefined'`。
-
-这说明一件事：**`undefined` 的语义边界，大于 Undefined Type 本身。**
-
-Undefined Type 只有一个成员——primitive value `undefined`。但在 ECMAScript 的实际运行中，`undefined` 承担的语义覆盖面远超这个值。在 Reference System 中：
-
-- **属性不存在**（`obj.missing`）：`[[Get]]` 找不到属性 → `undefined`
-- **未声明变量**（`typeof x`）：binding 不存在 → `'undefined'`
-- **数组空洞**（`[1, , 3][1]`）：连 property slot 都没有（`[[HasProperty]]` = `false`）→ `undefined`
-
-数组空洞值得单独说一句。[[JavaScript/Array|聊数组]]时我们说过，空洞（hole）和 `undefined` 不是一回事。[[JavaScript/Array|Array 笔记]]里有个类比：`undefined` 是"柜子存在，但里面空的"；hole 是"柜子压根没装"。
-
-但这两个柜子，打开门看到的都是空的——访问结果都是 `undefined`：
-
-```js
-const filled = [1, undefined, 3]; // ⚠️ 演示用——实际应该用 null
-const holey = [1, , 3];           // 索引 1 是空洞
-
-console.log(filled[1]); // undefined
-console.log(holey[1]);  // undefined —— 看起来一样
-```
-
-区别藏在背后。用 `in` 操作符一测：
-
-```js
-1 in filled; // true  —— 属性存在，值是 undefined
-1 in holey;  // false —— 属性根本不存在
-```
-
-`forEach` 也证实了——空洞会被跳过：
-
-```js
-filled.forEach(v => console.log(v)); // 1, undefined, 3
-holey.forEach(v => console.log(v));  // 1, 3
-```
-
-但有趣的是，现代 API 不再区分两者——`for...of`、展开运算符、`Array.from`、`includes` 统一把空洞当作 `undefined`：
-
-```js
-[...holey];                         // [1, undefined, 3]
-for (const x of holey) console.log(x); // 1, undefined, 3
-holey.includes(undefined);          // true
-```
-
-这恰恰印证了本文的论点：空洞的访问结果**就是** `undefined`——因为"取值失败后回退到 undefined"是引擎的统一语义。老 API 在 `in` 的层面处理"属性不存在"，现代 API 直接使用引擎的回退结果。两条路线，同一个机制。
-
-**在 Reference System 中，`undefined` 是所有"引用失败"的统一回退——不管失败发生在属性层、变量层还是数组层。**
-
-Binding System 处理"值还没给"，Reference System 处理"引用找不到"。但还有第三种缺席——语句执行完了，却没产出任何结果。这就是最后一个系统：Completion System。
-
----
-
-## Completion System：undefined 是 ECMAScript 的 universal fallback completion
-
-这是全文最重要的部分。
-
-### Completion Record：每条语句的隐藏产出
-
-ECMAScript 里**每一条语句**执行后都会产生一个 Completion Record，包含三个字段：
-
-| 字段 | 含义 |
-|---|---|
-| `[[Type]]` | 完成类型：`normal`、`return`、`throw`、`break`、`continue` |
-| `[[Value]]` | 完成值——这条语句产生的结果 |
-| `[[Target]]` | break/continue 的跳转标签 |
-
-大多数时候你看不到 Completion Record，引擎只把函数体的最终 `[[Value]]` 作为返回值暴露出来。但 `eval` 可以直接暴露语句的完成值，让你"看见"这个隐藏机制：
-
-```js
-eval("1 + 2")                // 3  —— 表达式的完成值就是它的值
-eval("if (true) 1;")         // 1  —— if 语句的完成值是被选中分支的值
-eval("if (false) 1;")        // undefined —— 没有执行分支，完成值 undefined
-eval("{ 1; 2; 3; }")         // 3  —— 块语句的完成值是最后一条语句的值
-eval("var x = 1;")           // undefined —— VariableStatement 的完成值是 undefined
-```
-
-### 为什么语句必须有完成值？
-
-但这里有一个更深的问题：**为什么 JavaScript 的语句必须有完成值？**
-
-因为 JavaScript 不是纯表达式语言。在 Haskell 或 Erlang 中，`if` 是表达式——`if x then 1 else 2` 一定会产出一个值。但在 JavaScript 中，`if`、`while`、`for`、`block` 都是 **statement**——它们的首要目的是控制流，而非产生值。然而 ECMAScript 又规定每条语句都必须产出 Completion Record，包括 `[[Value]]` 字段。
-
-这就产生了一个结构性矛盾：
-
-> 语句的本职工作不是产生值，但规范要求它必须有完成值。
-
-一旦语言允许"语句执行完成但没有值"，它就必须存在一个默认完成值来填充这个空缺。`undefined` 承担的正是这个角色——**ECMAScript 的 universal fallback completion**。
-
-这也解释了为什么 `if (false) 1;` 的完成值是 `undefined`（没有分支被执行）、`var x = 1;` 的完成值是 `undefined`（声明语句不产出值）、`{ 1; 2; 3; }` 返回 `3`（块的完成值是最后一条语句的值）——每条规则背后都是 Completion Record 的填充逻辑在运作。
-
-### return; vs 没有 return
-
-这就解释了一个常见困惑——**`return;` 和"没有 return 语句"是同一回事吗？**
-
-运行结果一样，都返回 `undefined`。但规范层面，两者的 Completion Record 不同：
-
-- `return;` → `{ [[Type]]: "return", [[Value]]: undefined }`——函数主动说"我要退出"
-- 函数走到末尾 → `{ [[Type]]: "normal", [[Value]]: undefined }`——自然结束，没有产出值
-
-`[[Type]]` 不同，但 `[[Value]]` 相同——都是 `undefined`。所以：
-
-```js
-function noop() {}
-```
-
-本质上不是"函数返回了 undefined"，而是——
-
-> "整个函数执行过程没有产生有意义的 completion value，于是规范回退到默认完成值 undefined。"
-
-同理：
-
-```js
-const a = console.log('hello'); // a 是 undefined
-```
-
-`console.log()` 执行了操作（打印），但刻意不产出结果。`undefined` 在这里是"操作完成但无产出"的信号。
-
-### void：人为制造一个"无完成值"
-
-`void` 运算符的语义放在 Completion System 中看就非常清晰了：它对表达式求值，**丢弃其完成值**，强制返回 `undefined`。
-
-```js
-void 0;          // undefined
-void (1 + 2);    // undefined
-void doSomething(); // undefined —— 执行了，但完成值被丢弃
-```
-
-`void` 本质上是一个 completion filter——你给它任何表达式，它都把完成值替换成 `undefined`。这和 `javascript:` 协议的需求完全一致：执行逻辑，但确保不产生会影响页面的返回值。
-
----
-
-## 终章：三个系统，一个出口
-
-现在我们可以回答开篇的问题了。
-
-ECMAScript 在三个不同的系统中都需要处理"缺席"：
-
-| 系统 | 缺席情形 | 回退 |
-|---|---|---|
-| **Binding System** | binding 已创建但未赋值（`var` 提升、函数缺省参数、`let` 未赋值） | → `undefined` |
-| **Reference System** | 属性不存在（`obj.missing`）、binding 不存在（`typeof x`）、property slot 缺失（数组空洞） | → `undefined` |
-| **Completion System** | 语句没有产出完成值（`if (false)`、`var` 声明、函数无 return） | → `undefined` |
-
-三种完全不同的语言机制——binding 初始化、引用解析、语句执行——全部收敛到同一个终点。
-
-这不是巧合，而是设计。
-
-`undefined` 之所以不是保留字，是因为它不是程序员主动使用的值——它是引擎在各个系统中自动产生的回退信号。
-
-`undefined` 的语义边界之所以大于 Undefined Type 本身，是因为它覆盖的不只是"一个值为空"，而是所有"本该有结果但没拿到"的运行时缺席。
-
-JavaScript 用同一个 primitive value——`undefined`——把这些缺席统一了。
-
-> **`undefined` 不是某一种缺席，它是缺席本身在语言层面的统一编码。**
-
----
-
-## 什么时候该用 undefined，什么时候该用 null？
-
-核心原则在 [[JavaScript/Null|null 的本质]] 中已经说过了：
-
-> **`null` 是程序员说的"没有"，`undefined` 是引擎说的"没有"。**
-
-Brendan Eich 自己也建议：**不要把 `undefined` 作为自定义的变量名**——把它当作保留字来对待就行了。
-
-`undefined` 的领地——全是引擎自动产生的：
-
-| 场景 | 理由 |
-|---|---|
-| 变量声明了但还没赋值 | 引擎自动填入——binding 存在但你还没决定放什么 |
-| 函数参数没传 | 引擎自动填入——调用者没有提供这个值 |
-| 对象属性不存在 | 引擎自动返回——lookup 失败 |
-| 函数没有返回值 | 引擎自动返回——操作完成了但没有产出 |
-| 数组空洞 | 引擎自动返回——这个位置没有值 |
-| 解构赋值的缺失值 | 引擎自动填入——解构目标没有对应的源 |
-
-共同特征：**所有这些场景中，`undefined` 都不是你写的，是引擎给的。**
-
-那什么时候该主动用 `null`？当你**检查过了、确认没有值**的时候——API 返回空结果、DOM 查找失败、JSON 中表示空字段。详见 [[JavaScript/Null|null 的本质#什么时候该用 null，什么时候该用 undefined？]]。
-
-所以实际操作很简单：
-
-```js
-// ❌ 声明时不需要写——引擎会自动填 undefined
-let foo = undefined;
-
-// ✅ 让引擎来填
-let foo;
-
-// ✅ 需要表达"有意为空"时，用 null
-let user = null;
-```
-
----
-
-## undefined vs null：完整对比
-
-两者的行为差异贯穿了整个类型系统：
-
-| 维度 | `undefined` | `null` |
-|---|---|---|
-| **本质** | 取值失败的缺席结果 | 程序员的空声明 |
-| **是否保留字** | 否（全局属性，历史兼容） | 是（字面量） |
-| **AST 节点** | `Identifier`（和变量名同类） | `Literal`（和 `100`、`"hello"` 同类） |
-| **var 提升** | binding 初始化为 undefined | 不适用 |
-| **TDZ** | binding 未初始化时抛错 | 不适用 |
-| **typeof** | `'undefined'`（Reference Record 不 resolve） | `'object'`（历史 Bug） |
-| **void** | 为它量身定制 | 无关 |
-| **函数无返回** | Completion Record 默认值 | 不适用 |
-| **解构默认值** | 触发默认值 | 不触发 |
-| **算术运算** | NaN（不可计算） | 转 0（可计算） |
-| **== 特判** | 与 null 互认 | 与 undefined 互认 |
-| **JSON** | 丢弃 / 替换为 null | 可传输 |
-| **?? / ?.** | nullish，被 ?? 吃掉 | nullish，被 ?? 吃掉 |
-
-所以 `undefined` 从来不是一个普通值。它是 ECMAScript 整个运行时系统的默认回退语义——当语言无法产生有效结果时，它统一落回这里。
+> 制造缺席这件事，从浏览器时代到今天，一脉相承。

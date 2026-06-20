@@ -1,5 +1,9 @@
-// Symbol.iterator 迭代协议
-// 运行：node 02-iterator.js
+// Symbol 之三：迭代协议落地 —— for...of 到底做了什么
+// 运行：node 03-iterator.js
+//
+// 对应文章「Runtime Protocol 落地：for...of 到底做了什么？」一节：
+// runtime 检查 obj[Symbol.iterator] 是否存在且是函数，不看对象具体类型
+// 这是语言级 duck typing——runtime 在运行时做能力检查
 
 console.log('=== 1. 自定义可迭代对象：数字范围 ===\n')
 
@@ -33,6 +37,8 @@ console.log('\n=== 2. Runtime 检查逻辑 ===\n')
 
 console.log('typeof range[Symbol.iterator]:', typeof range[Symbol.iterator])  // "function"
 console.log('Array.isArray(range):', Array.isArray(range))  // false
+
+// runtime 不关心 range 是不是 Array，只检查 Symbol.iterator 是否存在且是函数
 
 
 console.log('\n=== 3. 普通对象不可迭代 ===\n')

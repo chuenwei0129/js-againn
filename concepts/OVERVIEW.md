@@ -22,14 +22,20 @@ concepts/<concept-name>/
 ### Null ✅
 - 文章：JavaScript null 的本质——"有意的空"如何成为语言基石（`articles/01-null-essence.md`）
 - 速查卡：核心概念 + 抽象操作表 + JSON + TypeScript + 3 个核心问题
-- 代码：4 个文件，覆盖基础、转换与相等、原型、nullish 操作符
+- 代码：7 个文件，按文章小节切分（essence / ToNumber / typeof Bug / 相等 / 原型 / JSON / nullish 操作符）
 - 自测题：14 道（含 TypeScript 与生态实践）
 
 ### Symbol ✅
 - 文章：从多态到运行时协议（`articles/01-why-symbol.md`）
 - 速查卡：核心概念 + API + 3 个核心问题
-- 代码：4 个文件，覆盖所有 Well-known Symbols
+- 代码：5 个文件，按文章小节切分（为何发明 / 基础 API / 迭代协议 / Runtime Hooks / 边界）
 - 自测题：10 道
+
+### Undefined ✅
+- 文章：为什么 JavaScript 会有 undefined——ECMAScript 对运行时缺席的统一编码（`articles/01-why-undefined.md`）
+- 速查卡：三套缺席系统表 + 抽象操作对照 + undefined vs null + 3 个核心问题
+- 代码：6 个文件，按文章小节切分（Binding / Reference / Completion / 默认值 / null 对比 / 保留字与 void）
+- 自测题：11 道
 
 ## 待创建
 

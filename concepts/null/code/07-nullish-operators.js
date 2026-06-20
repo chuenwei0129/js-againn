@@ -1,5 +1,8 @@
-// 现代 nullish 操作符：?? 、?. 和参数默认值
-// 运行：node 04-nullish-operators.js
+// null 之七：?? 和 ?. —— JavaScript 开始认真对待两种「空」
+// 运行：node 07-nullish-operators.js
+//
+// 对应文章「?? 和 ?.」一节：
+// ?? 基于 IsNullOrUndefined（空值），?. 遇 nullish 短路返回 undefined，参数默认值只对 undefined 生效
 
 console.log('=== 1. || vs ??：关键区别 ===\n')
 

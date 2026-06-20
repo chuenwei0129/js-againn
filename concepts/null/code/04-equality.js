@@ -1,5 +1,8 @@
-// null 的类型转换与相等性比较
-// 运行：node 02-conversion-and-equality.js
+// null 之四：== 中的特权 —— 唯一拥有专属分支的值
+// 运行：node 04-equality.js
+//
+// 对应文章「null 在 == 中的特权」一节：
+// Abstract Equality 为 null/undefined 设专属分支（Step 2/3），不等于任何其他值
 
 console.log('=== 1. Abstract Equality (==)：null 的专属特权 ===\n')
 

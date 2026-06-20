@@ -1,5 +1,8 @@
-// null 作为原型链终点 + Object.create(null)
-// 运行：node 03-prototype.js
+// null 之五：原型链终点 —— null 代表主动终止
+// 运行：node 05-prototype.js
+//
+// 对应文章「原型链终点：null 代表主动终止」一节：
+// 原型链以 null 终止（主动终止，不是未初始化）；Object.create(null) 切断原型链做纯字典
 
 console.log('=== 1. 原型链终点是 null ===\n')
 
