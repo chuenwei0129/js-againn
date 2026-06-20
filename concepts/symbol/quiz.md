@@ -1,6 +1,6 @@
 # Symbol 自测题
 
-## 基础题（必须全对）
+## 读懂题
 
 **题目 1**
 ```javascript
@@ -90,7 +90,7 @@ console.log(obj['sym']);
 
 ---
 
-## 进阶题（理解核心机制）
+## 想通题
 
 **题目 6**
 ```javascript
@@ -194,8 +194,120 @@ try { '' + sym; } catch (e) { console.log(e.constructor.name); }
 
 ---
 
+## 写出题
+
+**题目 11**
+
+写一个 `Range` 类，支持 `for...of` 遍历：
+
+```js
+for (const n of new Range(1, 5)) {
+  console.log(n); // 1, 2, 3, 4
+}
+```
+
+<details>
+<summary>查看参考答案</summary>
+
+```js
+class Range {
+  constructor(start, end) {
+    this.start = start;
+    this.end = end;
+  }
+
+  [Symbol.iterator]() {
+    let current = this.start;
+    const end = this.end;
+    return {
+      next() {
+        return current <= end
+          ? { value: current++, done: false }
+          : { done: true };
+      }
+    };
+  }
+}
+```
+
+**自检：**
+- 用了 `[Symbol.iterator]` 而不是普通方法名？
+- `next()` 返回 `{ value, done }` 格式？
+- 遍历结束时返回 `{ done: true }`（没有 value）？
+
+</details>
+
+---
+
+**题目 12**
+
+写一个 `Money` 类，支持模板字符串和 `+` 运算：
+
+```js
+const price = new Money(100, 'CNY');
+console.log(`价格: ${price}`);  // '价格: ¥100'
+console.log(price + 50);        // 150
+```
+
+<details>
+<summary>查看参考答案</summary>
+
+```js
+class Money {
+  constructor(amount, currency) {
+    this.amount = amount;
+    this.currency = currency;
+  }
+
+  [Symbol.toPrimitive](hint) {
+    if (hint === 'string') {
+      const symbols = { CNY: '¥', USD: '$' };
+      return `${symbols[this.currency] || this.currency}${this.amount}`;
+    }
+    return this.amount; // number 或 default
+  }
+}
+```
+
+**自检：**
+- `hint === 'string'` 时返回格式化字符串？
+- 其他 hint（`'number'`、`'default'`）时返回数值？
+- 没用 `toString()` + `valueOf()` 这对旧方案？
+
+</details>
+
+---
+
+**题目 13**
+
+解释：为什么 `Symbol('foo') === Symbol('foo')` 是 `false`？如果需要共享 Symbol 应该怎么做？写代码演示。
+
+<details>
+<summary>查看参考答案</summary>
+
+```js
+// 唯一性：每次 Symbol() 调用都创建新的 identity
+const a = Symbol('foo');
+const b = Symbol('foo');
+console.log(a === b); // false
+
+// 共享 Symbol：Symbol.for() 从全局注册表取
+const c = Symbol.for('shared');
+const d = Symbol.for('shared');
+console.log(c === d); // true
+
+// 反查
+console.log(Symbol.keyFor(c)); // 'shared'
+```
+
+**本质：** `Symbol('foo')` 的参数只是描述字符串（description），不影响 identity。`Symbol.for()` 维护一个全局注册表（[[GlobalSymbolRegistry]]），相同 key 返回同一个 Symbol。
+
+</details>
+
+---
+
 ## 评分
 
-- **9-10/10：** ✓ 掌握良好
-- **7-8/10：** 基础扎实，错题对应章节重看
-- **6/10 以下：** 建议完整复习 `articles/`
+- **13/13：** ✓ 掌握良好
+- **10-12/13：** 基础扎实，错题对应章节重看
+- **9/13 以下：** 建议完整复习 `articles/`

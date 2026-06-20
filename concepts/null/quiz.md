@@ -1,6 +1,6 @@
 # null 自测题
 
-## 基础题（必须全对）
+## 读懂题
 
 **题目 1**
 ```javascript
@@ -87,7 +87,7 @@ console.log(Object.getPrototypeOf(Object.prototype));
 
 ---
 
-## 进阶题（理解核心机制）
+## 想通题
 
 **题目 6**
 ```javascript
@@ -178,8 +178,6 @@ console.log(JSON.stringify([undefined, null]));
 ---
 
 ---
-
-## TypeScript 与生态实践（理解类型语义）
 
 **题目 11**
 ```typescript
@@ -329,8 +327,108 @@ const count = map.get('count') ?? defaultValue
 
 ---
 
+## 写出题
+
+**题目 15**
+
+写一个函数 `getNestedValue(obj, path)`，安全获取嵌套对象属性，任意一层为 `null` 或 `undefined` 时返回默认值。
+
+```js
+const user = { address: { city: 'Beijing' } };
+getNestedValue(user, 'address.city')     // 'Beijing'
+getNestedValue(user, 'address.zip.code') // undefined
+getNestedValue(null, 'address.city')     // undefined
+```
+
+不许用 `?.`，手写逻辑。
+
+<details>
+<summary>查看参考答案</summary>
+
+```js
+function getNestedValue(obj, path, defaultValue = undefined) {
+  const keys = path.split('.');
+  let current = obj;
+  for (const key of keys) {
+    if (current == null) return defaultValue;  // null 或 undefined 都短路
+    current = current[key];
+  }
+  return current === undefined ? defaultValue : current;
+}
+```
+
+**自检：**
+- `current == null` 而不是 `=== null`？（利用 null == undefined 的专属分支）
+- 路径拆分后逐层访问，任意一层 nullish 就返回默认值？
+- 最终值是 undefined 也返回默认值？
+
+</details>
+
+---
+
+**题目 16**
+
+解释：为什么 `Object.create(null)` 创建的对象适合作为"纯净字典"？它和普通对象 `{}` 有什么本质区别？请写代码演示。
+
+<details>
+<summary>查看参考答案</summary>
+
+```js
+const normal = {};
+const pure = Object.create(null);
+
+// 区别 1：原型链
+console.log(Object.getPrototypeOf(normal)); // [Object: null prototype] {}
+console.log(Object.getPrototypeOf(pure));   // null
+
+// 区别 2：继承的属性
+console.log('toString' in normal); // true（从 Object.prototype 继承）
+console.log('toString' in pure);   // false（没有原型）
+
+// 区别 3：安全的 key 查找
+const userKey = '__proto__';
+normal[userKey] = 'evil';  // 可能触发原型污染
+pure[userKey] = 'evil';    // 只是普通属性
+```
+
+**本质：** 原型链以 `null` 为终点（ECMA-262 10.1.1.2），`Object.create(null)` 切断了原型链，没有 `toString`、`hasOwnProperty` 等继承属性，也不会被 `__proto__` 污染。当 key 来自用户输入时，这是唯一安全的选择。
+
+</details>
+
+---
+
+**题目 17**
+
+看代码，预测输出并解释原因：
+
+```js
+const map = new Map();
+map.set('a', 0);
+
+console.log(map.get('a') || 'missing');
+console.log(map.get('a') ?? 'missing');
+console.log(map.get('b') || 'missing');
+console.log(map.get('b') ?? 'missing');
+```
+
+<details>
+<summary>查看参考答案</summary>
+
+**答案：** `'missing'`, `0`, `'missing'`, `'missing'`
+
+**解释：**
+- `map.get('a')` 是 `0`，`||` 基于 ToBoolean，`0` 是 falsy → 被替换为 `'missing'`
+- `map.get('a')` 是 `0`，`??` 基于 IsNullOrUndefined，`0` 不是 null/undefined → 保留 `0`
+- `map.get('b')` 是 `undefined`，`||` 和 `??` 都替换 → `'missing'`
+
+**关键：** `||` 和 `??` 的分水岭是 ToBoolean vs IsNullOrUndefined。值为 `0`、`''`、`false` 时两者行为不同。
+
+</details>
+
+---
+
 ## 评分
 
-- **12-14/14：** 掌握良好
-- **10-11/14：** 基础扎实，错题对应章节重看
-- **9/14 以下：** 建议完整复习 `articles/`
+- **15-17/17：** 掌握良好
+- **12-14/17：** 基础扎实，错题对应章节重看
+- **11/17 以下：** 建议完整复习 `articles/`
