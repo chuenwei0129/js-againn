@@ -37,7 +37,9 @@ js-againn/
 
 ```
 concepts/<concept-name>/
-├── article.md         ← 核心理论（学习用）
+├── articles/          ← 核心理论（学习用）
+│   ├── 01-xxx.md
+│   └── ...
 ├── cheatsheet.md      ← 速查卡（复习用）
 ├── code/              ← 代码示例
 │   ├── 01-basic.js
@@ -54,7 +56,7 @@ concepts/<concept-name>/
 cd concepts/symbol
 
 # 1. 读文章（30 分钟）
-# 打开 article.md，理解核心概念
+# 打开 articles/ 文件夹，从第一篇开始
 
 # 2. 跑代码（15 分钟）
 node code/01-basic.js

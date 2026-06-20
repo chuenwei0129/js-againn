@@ -20,6 +20,10 @@ Single-context 布局：根目录一个 CONTEXT.md + docs/adr/。See `docs/agent
 
 这是一个专门为了反复复习 JavaScript 核心知识点而生的仓库。名字里的 `againn` 表示复习次数的变量：`n = 1, 2, 3, …`。
 
+## 约束
+
+- **禁止读取 `materials/` 目录**：该目录是旧笔记存档，用户会自行参考，AI 不得读取其中的任何文件。
+
 ## 如何使用
 
 1. 按目录顺序阅读文章 + 运行代码

@@ -23,14 +23,14 @@ JavaScript 的类型系统里有两个"空"——`null` 和 `undefined`。大多
 
 想象你有一个快递柜。
 
-**静态类型语言**就像管理严格的智能柜。在你办租用手续的那一刻——也就是**编译时**——你就必须登记：“3号柜只放食品”。系统把这条规则刻进表格里。等到**运行时**，无论你是从没打开过柜子，还是特意放入一个空盒子，管理员在开柜门前就能查到：这个柜子的类型已知，有无内容已知。它不需要在开门后再去猜“里面到底有没有东西”。所以，对你来说，只有一种“空”需要表达——那就是你明确放进去的“空”。静态语言在编译阶段就消灭了“未定义”这种模糊状态，运行时当然无需区分两种空。
+**静态类型语言**就像管理严格的智能柜。在你办租用手续的那一刻——也就是**编译时**——你就必须登记：“3号柜只放食品”。系统把这条规则刻进表格里。等到**运行时**，无论你是从没打开过柜子，还是特意放入一个空盒子，管理员在开柜门前就能查到：这个柜子的类型已知，有无内容已知。它不需要在开门后再去猜“里面到底有没有东西”。所以，对你来说，只有一种“空”需要表达——那就是你明确放进去的“空”。静态类型语言通常在编译期显式建模缺失状态，运行时当然无需区分两种空。
 
 **动态类型语言**的柜子刚好相反。租用时你不做任何登记，柜子什么都能装，**所有检查都被推迟到运行时**。问题随之而来——当你打开柜门时，系统才第一次面对这个柜子。它发现里面是空的，但立刻陷入困惑：这个“空”到底是什么意思？
 
 - 是**从来没人碰过这个柜子**，系统只能说“我不知道这里有什么”——这是 `undefined`，一种**系统发现的缺失**。
 - 还是**你检查过柜子，亲手贴上一张纸条：“确认此柜为空”**——这是 `null`，一种**你主动声明的空**。
 
-`let x;` ——你什么都没做，运行时系统帮你填了 `undefined`，它在表达“尚未存在”。  
+`let x;` ——你什么都没做，运行时系统帮你填了 `undefined`，它在表达“尚未存在”。
 `let user = null;` ——你亲手写下空值，它在宣告“有意留白”。
 
 因为动态语言没有编译期的登记表，它只能在运行时通过 `undefined` 和 `null` 这两种不同的面孔，去分辨“未曾存在”和“故意为空”。静态语言把歧义杀死在编译时，运行时早就知道答案；动态语言把一切交给运行时，于是必须保留双重“空”，让程序能在运行中辨认意图。
@@ -51,7 +51,9 @@ null <= 0;     // true
 undefined < 0; // false
 ```
 
-为什么 `null` 在算术中变成 `0`，而 `undefined` 变成 `NaN`？表面上看是因为 [ToNumber](https://tc39.es/ecma262/#sec-tonumber) (§7.1.4) 的规则——`null → 0`，`undefined → NaN`。但规则本身不解释**为什么这样规定**。
+为什么 `null` 在算术中变成 `0`，而 `undefined` 变成 `NaN`？表面上看是因为 [ToNumber](https://tc39.es/ecma262/#sec-tonumber) (§7.1.4) 的规则——`null → 0`，`undefined → NaN`。
+
+但规则本身不解释**为什么这样规定**。
 
 要诚实地说：`null → 0` 未必源于某种完整的数学哲学，它更像早期 JavaScript 宽松类型转换体系中的一个历史选择——C 风格空指针数值化遗留、"absence coerces to zero" 的传统习惯。它们并不"语义优雅"。
 
@@ -81,15 +83,40 @@ JavaScript 引擎区分类型靠的是**类型标签**——每个值在内存�
 
 ---
 
-## null 在 == 中的特权：唯一不做类型转换的原始值
+要真正理解这个 Bug 为什么是"Bug"，需要区分 ECMAScript 规范的两个层级：
 
-这是 `null` 最不寻常的特征。ECMAScript 规范对 `==` 做了一个全局特判：若一方是 `null` 且另一方是 `undefined`，直接返回 `true`，**跳过一切类型转换**。
+- **规范内部的 `Type()` 抽象操作**（§6.1.1）：这是规范用来分类语言值的内部机制。`Type(null)` 的结果是 **Null**——一个独立的、与 Object 平级的类型。在这个层级，`null` 从来不是对象。
+- **`typeof` 运算符**（§13.5.3）：这是暴露给程序员的运行时操作符。它的实现依赖类型标签的位模式检查，碰巧把 `null` 误判为 `'object'`。
+
+`Type(x) = Null` 是规范的真相；`typeof x = "object"` 是实现的事故。两者不在同一个层级——前者是 ECMAScript 对值的语义分类，后者是引擎对内存标签的运行时检查。`typeof null` 的 Bug，恰恰发生在这两个层级的缝隙里。
+
+要彻底看清这个缝隙，得看一下 ECMAScript 规范内部的类型全景。规范在 [§6.1 ECMAScript Language Types](https://tc39.es/ecma262/#sec-ecmascript-language-types) 中定义了 8 种语言类型：
+
+> Undefined, Null, Boolean, String, Symbol, Number, BigInt, Object
+
+`Undefined` 和 `Null` 是两个**独立的类型**，和 `Object` 平级——它们不是 Object 的子类型，不是特殊值，而是规范类型系统里的两个一等公民。这就是为什么 `Type(null)` 的结果写成 **Null**（大写 N，类型名），而 `typeof null` 的结果写成 `"object"`（小写，字符串标签）——前者是类型真相，后者是实现事故。
+
+---
+
+## null 在 == 中的特权：Abstract Equality 的专属分支
+
+这是 `null` 最不寻常的特征——它在三种"相等"算法中只与自身相等，唯独 `==` 对它网开一面：
 
 ```js
-null == undefined; // true —— 直接特判，不走任何转换
+// Strict Equality (===)、SameValue (Object.is)、SameValueZero 全部如此：
+null === null;           // true
+undefined === undefined; // true
+null === undefined;      // false —— 不跨类型
+
+Object.is(null, null);           // true  —— SameValue
+Object.is(undefined, undefined); // true
+Object.is(null, undefined);      // false
+
+// 唯独 Abstract Equality (==) 反其道而行：
+null == undefined; // true —— 专属分支，Step 2/3 直接返回
 ```
 
-对比其他原始值在 `==` 中的行为，这个特权就更突出了：
+对比其他原始值在 `==` 中的行为，`null`/`undefined` 的专属分支就更突出了：
 
 ```js
 0 == false;        // true  —— false 转数字 0
@@ -97,14 +124,20 @@ null == undefined; // true —— 直接特判，不走任何转换
 "1" == true;       // true  —— true 转 1，"1" 转 1
 [] == false;       // true  —— [] 转 "" 转 0，false 转 0
 
-null == false;     // false —— 拒绝转换
-null == 0;         // false —— 拒绝转换
-null == "";        // false —— 拒绝转换
+null == false;     // false —— 不走专属分支，进入通用路径
+null == 0;         // false —— 不走专属分支，进入通用路径
+null == "";        // false —— 不走专属分支，进入通用路径
 ```
 
-`null` 和 `undefined` 是 ECMAScript 抽象相等比较（Abstract Equality Comparison）中**唯一共享专属分支的一组值**——规范为它们单独写了一条规则，跳过一切类型转换，直接判定相等。其他值（包括 `Symbol`、`BigInt`）走的都是带类型转换的通用路径。为什么规范要给 `null`/`undefined` 这个特权？
+ECMAScript 规范的 [Abstract Equality Comparison](https://tc39.es/ecma262/#sec-abstract-equality-comparison)（§7.2.16）在算法的前两步就为 `null` 和 `undefined` 设了专属分支：
 
-一个有说服力的解释是：如果允许 `null` 在 `==` 中被转换成 `0` 或 `""` 或 `false`，那就等于说"空和某个具体的值等价"——这会让 `null` 失去作为独立标记的意义。结果是：**`null` 只等于 `undefined`，因为两者都是"空"的表达；`null` 不等于任何其他值，因为空不等于任何东西。** 这是"有意的空"模型最有解释力的地方——即使规范没有明文这么说，这个模型也能统一解释 `==` 特判的行为。
+> Step 1: If x and y have the same type, return the result of Strict Equality.
+> Step 2: If x is null and y is undefined, return true.
+> Step 3: If x is undefined and y is null, return true.
+
+当一方是 `null`、另一方是 `undefined` 时，算法在 Step 2 或 Step 3 就返回了——**后续的类型转换步骤根本没有机会执行**。`null` 和 `undefined` 是 Abstract Equality Comparison 中**唯一共享专属分支的一组值**。其他值（包括 `Symbol`、`BigInt`）走的都是后续带类型转换的通用路径。
+
+为什么规范要给 `null`/`undefined` 这个特权？如果允许 `null` 在 `==` 中被转换成 `0` 或 `""` 或 `false`，那就等于说"空和某个具体的值等价"——这会让 `null` 失去作为独立标记的意义。结果是：**`null` 只等于 `undefined`，因为两者都是"空"的表达；`null` 不等于任何其他值，因为空不等于任何东西。** 这是"有意的空"模型最有解释力的地方——即使规范没有明文这么说，这个模型也能统一解释 Abstract Equality 为 null/undefined 设立专属分支的行为。
 
 ---
 
@@ -130,7 +163,8 @@ const map = Object.create(null);
 map.__proto__ = '恶意数据'; // 只是一个普通属性
 ```
 
-> 你可能见过"Object.create(null) 性能更好"的说法——这是个流传甚广的误解。`Object.create(null)` 真正的价值是**安全**（切断原型链，杜绝原型污染），而不是性能。现代 JS 引擎（如 V8）对普通字面量对象 `{}` 有隐藏类和 inline cache 等深度优化，属性查找反而更快；无原型对象缺少这些优化路径，往往被降级为 dictionary mode，密集读写时性能更差。选它是因为安全，不是因为快。
+> **性能澄清**
+> 你可能见过"Object.create(null) 性能更好"的说法——这是个流传甚广的误解。`Object.create(null)` 真正的价值是**安全**（切断原型链，杜绝原型污染），而不是性能。普通字面量对象 `{}` 在现代引擎中通常能享受隐藏类（hidden class）和内联缓存（inline cache）等深度优化；无原型对象由于没有原型链可供优化管道利用，某些引擎可能无法对它们应用同样的优化路径。选它是因为安全，不是因为快。
 
 ---
 
@@ -146,8 +180,13 @@ JSON.stringify(undefined);         // undefined（不是字符串）
 JSON.stringify({ a: null });       // '{"a":null}'
 JSON.stringify({ a: undefined });  // '{}' —— 属性消失
 
-JSON.stringify([1, undefined, 3]); // '[1,null,3]' —— 数组中变 null
+JSON.stringify([1, undefined, 3]); // '[1,null,3]' —— SerializeJSONArray 规范要求替换为 null
+JSON.stringify([undefined]);       // '[null]' —— 同上，不是 undefined 可序列化
 ```
+
+数组中 `undefined` 变成 `null`，不是因为它"可序列化"——`JSON.stringify` 内部的 [SerializeJSONArray](https://tc39.es/ecma262/#sec-serializejsonarray) (§25.3.2.3) 会递归处理每个元素，遇到 `undefined` 时显式要求写入 `null`。
+
+这是规范的刻意替换，不是 `undefined` 自己变成了 `null`。
 
 `undefined` 在序列化中的三种不同行为——顶层返回原始值（连字符串都不是）、对象属性中被忽略、数组中被替换为 `null`——恰恰说明 `undefined` 不是一个值，而是一个**状态**。它是"缺失"本身，无法被序列化成数据。
 
@@ -191,7 +230,9 @@ user.address.city;    // TypeError  —— 直接炸了
 
 函数参数默认值 `function greet(name = 'Guest')` 也遵循同样的逻辑——只在实参为 `undefined` 时生效，不会误伤 `0`、`''`、`false`。
 
-这三个特性——`??`、`?.`、参数默认值——共同构成了 JavaScript 对 nullish 值的现代处理范式。它们的出现本身就是一种承认：**`null` 和 `undefined` 确实和其他 falsy 值不同，它们值得被单独对待**。
+三个特性——`??`、`?.`、参数默认值——共同构成了 JavaScript 对 nullish 值的现代处理范式。
+
+它们的出现本身就是一种承认：**`null` 和 `undefined` 确实和其他 falsy 值不同，它们值得被单独对待**。
 
 ---
 
@@ -206,6 +247,7 @@ JavaScript 并不是通过"文档约定"区分 `null` 和 `undefined`。规范�
 | [ToNumber](https://tc39.es/ecma262/#sec-tonumber) (§7.1.4) | `0` | `NaN` |
 | [ToBoolean](https://tc39.es/ecma262/#sec-toboolean) (§7.1.2) | `false` | `false` |
 | [ToObject](https://tc39.es/ecma262/#sec-toobject) (§7.1.16) | `TypeError` | `TypeError` |
+| Strict Equality (§7.2.15) / SameValue (§7.2.12) / SameValueZero (§7.2.13) | 只与自身相等 | 只与自身相等 |
 | [Abstract Equality](https://tc39.es/ecma262/#sec-abstract-equality-comparison) (§7.2.16) | 专属分支：只与 `undefined` 相等 | 专属分支：只与 `null` 相等 |
 | JSON Serialization | 保留为 `null` | 丢弃 / 替换 |
 | [IsNullOrUndefined](https://tc39.es/ecma262/#sec-isnullorundefined) (§7.2.3) | `true` | `true` |
@@ -215,7 +257,8 @@ JavaScript 并不是通过"文档约定"区分 `null` 和 `undefined`。规范�
 - **ToNumber 分裂**：一个变成合法数字 `0`，一个变成 `NaN`——这是它们在算术世界里被区别对待的根源
 - **ToBoolean 统一**：都是 `false`——`||` 无法区分它们，这正是 `??` 存在的理由
 - **ToObject 统一**：都抛 `TypeError`——两者都不能当对象用，没有例外
-- **Abstract Equality 分裂+统一**：共享一个专属分支，只互相相等，不与任何其他值转换比较——整个算法里唯一一对享此待遇的值
+- **Strict Equality / SameValue / SameValueZero 统一**：三者规则一致——`null` 只与自身相等，`undefined` 只与自身相等，两者之间**不相等**
+- **Abstract Equality 分裂**：唯独 `==` 为 `null`/`undefined` 设了专属分支，让两者互相相等——整个算法里唯一一对享此待遇的值。对比 `===`、`Object.is` 全都拒绝跨类型相等，`==` 的这条规则才显得格外特殊
 - **IsNullOrUndefined 统一**：`??` 和 `?.` 内部调用的检查，把两者归为同一类 "nullish"——这是 ES2020 对"两种空"的最终态度：该区别时区别，该合一时合一
 
 `null` 和 `undefined` 的差异，并不是某个 API 的偶然行为，而是贯穿整个 ECMAScript 抽象操作系统的一致性设计。前面看到的每一个"奇怪行为"——`1 + null === 1`、`null == undefined`、`JSON.stringify(undefined)` 消失——都是这张表的一个投影。
@@ -235,10 +278,11 @@ JavaScript 并不是通过"文档约定"区分 `null` 和 `undefined`。规范�
 | 场景 | 用什么 | 为什么 |
 |---|---|---|
 | API 返回"查无此记录" | `null` | 你查过了，确认没有——有意的空 |
-| DOM 查找失败 | `null`（原生 API 就这么设计的） | `getElementById` 返回 null |
+| DOM 查找失败 | `null`（原生 API 就这么设计的） | `getElementById`、`querySelector`、`closest` 等均返回 null |
 | 变量声明了但还没赋值 | `undefined`（`let x;`） | 引擎自动填入 |
 | 函数参数没传 | `undefined` | 引擎自动填入 |
 | 对象属性不存在 | `undefined` | 引擎自动返回 |
+| `Map.get(key)` | `undefined` | 无法区分"键不存在"和"值为 `undefined`"，需配合 `map.has(key)` 使用 |
 | JSON 中表示空字段 | `null` | JSON 规范只认 null |
 | TypeScript 中可能为空的返回值 | `string \| null` | `strictNullChecks` 下语义最精确 |
 
@@ -271,9 +315,13 @@ type User = {
 | 明确为空 | `T \| null` | `null` |
 | 可能缺席 | `T \| undefined`（`?`） | `undefined` |
 
-TypeScript 做的事情，本质上是把 JavaScript 运行时里隐含的语义分工，提升成了类型系统里的**显式契约**。而 `strictNullChecks` 就是这个契约的开关——打开它，编译器会强制你区分"明确为空"和"可能缺席"，不再让两种缺失混为一谈。
+TypeScript 做的事情，本质上是把 JavaScript 运行时里隐含的语义分工，提升成了类型系统里的**显式契约**。
 
-这不是 TypeScript 团队的发明——是 Zod、Prisma、GraphQL Code Generator、React Hooks 的类型定义……整个现代生态**重新确认**了同一个结论：
+`strictNullChecks` 就是这个契约的开关——打开它，编译器会强制你区分"明确为空"和"可能缺席"，不再让两种缺失混为一谈。
+
+这不是 TypeScript 团队的发明——是 Zod、Prisma、GraphQL Code Generator、React Hooks 的类型定义……
+
+整个现代生态**重新确认**了同一个结论：
 
 > `null` = 这里有值，但它是空的。
 > `undefined` = 这里可能没有值。
@@ -294,7 +342,7 @@ JavaScript 最大的争议之一，是它同时拥有 `null` 和 `undefined` 两
 
 于是整篇文章里那些看似混乱的行为——
 
-`typeof null === 'object'` 的历史 Bug、`null == undefined` 的专属特判、JSON 保留 `null` 而丢弃 `undefined`、`??` 和 `?.` 的诞生、TypeScript 的 `strictNullChecks`——
+`typeof null === 'object'` 的历史 Bug、`null == undefined` 的 Abstract Equality 专属分支、JSON 保留 `null` 而丢弃 `undefined`、`??` 和 `?.` 的诞生、TypeScript 的 `strictNullChecks`——
 
 开始第一次呈现出统一逻辑：
 
@@ -308,7 +356,9 @@ JavaScript 真正想表达的，从来不是"两种空值"。
 
 后者是人为的、主动的、可跨语言传递的——它属于应用逻辑，活在数据层、API 边界、类型契约里。
 
-这两种"缺失"的区分，不是语言层面的冗余，而是整个 Web 平台从 1995 年至今三十年演化的底层共识。DOM 用 `null` 表示"查无此节点"，JSON 用 `null` 表示"空字段"，GraphQL 用 `null` 表示"nullable 字段无值"，TypeScript 用 `null` 表示"有意为空的类型分支"——这些不是巧合，是同一种语义在不同层级的投射。
+这两种"缺失"的区分，不是语言层面的冗余，而是整个 Web 平台从 1995 年至今三十年演化的底层共识。
+
+DOM 用 `null` 表示"查无此节点"，JSON 用 `null` 表示"空字段"，GraphQL 用 `null` 表示"nullable 字段无值"，TypeScript 用 `null` 表示"有意为空的类型分支"——这些不是巧合，是同一种语义在不同层级的投射。
 
 `undefined` 从未被赋予这个角色，因为它从一开始就是引擎的内部状态——它不属于数据，不属于协议，不属于程序员。
 
@@ -322,12 +372,12 @@ JavaScript 真正想表达的，从来不是"两种空值"。
 
 因为已经不可能了。`null` 的语义早已溢出语言本身，嵌入了整个 Web 平台：
 
-- **DOM**：`document.getElementById('不存在')` 返回 `null`，不是 `undefined`——这是 1995 年的设计，改了就炸掉所有 DOM 操作代码
+- **DOM**：查找节点失败一律返回 `null`——`getElementById`、`querySelector`、`closest`、`nextElementSibling`，无一例外。这是 1995 年就定下的平台契约，改了就炸掉所有 DOM 操作代码
 - **JSON**：RFC 8259 只认 `null`，不认 `undefined`——这是跨语言数据交换的协议层约定
 - **Web API**：Fetch、IndexedDB、Intersection Observer……返回"无值"时用的都是 `null`
-- **GraphQL**：schema 中的 nullable 字段在响应中就是 `null`——这是整个查询语言的类型系统基础
+- **GraphQL**：schema 中的 nullable 字段在响应中就是 `null`——协议层根本不存在 `undefined` 的概念，只有 `null` 表示"字段无值"
 - **TypeScript**：`strictNullChecks` 区分 `string | null` 和 `string | undefined`，两者在类型层面有不同语义
-- **React**：`useState(null)` 表示"有意设为空"，组件返回 `null` 表示"不渲染"——框架层面对两种空有不同约定
+- **React**：社区通常用 `useState(null)` 表示"尚未获得实体对象"，组件返回 `null` 表示"不渲染"——前者是社区约定，后者是框架官方语义
 - **数据库驱动**：PostgreSQL/MySQL 查询结果中的空字段映射为 `null`，ORM 层再传递下去
 
 2015 年有人提议让 `typeof null === 'null'`，被拒绝了。原因不是"这不优雅"，而是**数百万行代码依赖当前行为**。废弃 `null` 的破坏面比这大几个数量级——它不是语言层面的清理，而是整个 Web 平台的协议层迁移。
