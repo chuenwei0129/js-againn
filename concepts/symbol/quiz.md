@@ -198,4 +198,4 @@ try { '' + sym; } catch (e) { console.log(e.constructor.name); }
 
 - **9-10/10：** ✓ 掌握良好
 - **7-8/10：** 基础扎实，错题对应章节重看
-- **6/10 以下：** 建议完整复习 `article.md`
+- **6/10 以下：** 建议完整复习 `articles/`

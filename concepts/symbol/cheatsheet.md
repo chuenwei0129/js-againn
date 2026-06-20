@@ -45,4 +45,4 @@ String(s)                // "Symbol(desc)"
 3. **Symbol 属性为什么不出现在 Object.keys()？**  
    它是运行时钩子，不是业务数据
 
-**答不上来？** → 跑 `code/` 或看 `article.md`
+**答不上来？** → 跑 `code/` 或看 `articles/`
