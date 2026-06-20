@@ -25,7 +25,9 @@
 js-againn/
 ├── README.md              ← 你在这里
 ├── concepts/              ← 核心概念（结构化学习）
+│   ├── null/              ✅ 已完成
 │   ├── symbol/           ✅ 已完成
+│   ├── undefined/        ✅ 已完成
 │   ├── promise/          🚧 待创建
 │   ├── closure/          🚧 待创建
 │   └── ...
@@ -42,8 +44,8 @@ concepts/<concept-name>/
 │   └── ...
 ├── cheatsheet.md      ← 速查卡（复习用）
 ├── code/              ← 代码示例
-│   ├── 01-basic.js
-│   ├── 02-xxx.js
+│   ├── 01-xxx.js
+│   ├── 02-yyy.js
 │   └── ...
 └── quiz.md            ← 自测题（点击展开答案）
 ```
@@ -59,10 +61,11 @@ cd concepts/symbol
 # 打开 articles/ 文件夹，从第一篇开始
 
 # 2. 跑代码（15 分钟）
-node code/01-basic.js
-node code/02-iterator.js
-node code/03-toPrimitive.js
-node code/04-hasInstance-and-more.js
+node code/01-why-symbol.js
+node code/02-basic-api.js
+node code/03-iterator.js
+node code/04-runtime-hooks.js
+node code/05-boundary.js
 
 # 3. 做自测题（15 分钟）
 # 打开 quiz.md，先思考再点开答案
@@ -76,10 +79,20 @@ node code/04-hasInstance-and-more.js
 
 ## ✅ 已完成的概念
 
+### Null
+- 📍 `concepts/null/`
+- 📝 速查卡 + 自测题
+- 💻 7 个代码示例
+
 ### Symbol
 - 📍 `concepts/symbol/`
-- 📝 10 道自测题 + 速查卡
-- 💻 4 个代码示例
+- 📝 速查卡 + 自测题
+- 💻 5 个代码示例
+
+### Undefined
+- 📍 `concepts/undefined/`
+- 📝 速查卡 + 自测题
+- 💻 6 个代码示例
 
 ## 📚 待创建的概念
 
