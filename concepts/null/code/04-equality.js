@@ -42,7 +42,7 @@ console.log('"1" == true    →', "1" == true)       // true（true → 1, "1" �
 console.log('[] == false    →', [] == false)       // true（[] → "" → 0, false → 0）
 
 // null 和 undefined 拒绝参与这套规则
-console.log('null == false  →', null == false)     // false（专属分支不命中，走通用但不转换）
+console.log('null == false  →', null == false)     // false（专属分支不命中；false 先经 Step 10 ToNumber→0，递归 null==0 仍落至 Return false）
 console.log('null == 0      →', null == 0)         // false
 console.log('null == ""     →', null == "")        // false
 

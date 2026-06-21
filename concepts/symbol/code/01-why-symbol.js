@@ -10,14 +10,14 @@ console.log('=== 1. duck typing：不看「你是谁」，只看「你能做什�
 
 // 不需要 interface / implements，调用方只依赖行为
 function letItMove(animal) {
-  animal.move()
+  return animal.move()
 }
 
 const cat = { move() { return '猫在跑' } }
 const bird = { move() { return '鸟在飞' } }
 
-console.log('cat.move  →', letItMove(cat) || '猫在跑')   // 猫在跑
-console.log('bird.move →', letItMove(bird) || '鸟在飞')  // 鸟在飞
+console.log('cat.move  →', letItMove(cat))   // 猫在跑
+console.log('bird.move →', letItMove(bird))  // 鸟在飞
 
 // 用户代码的 duck typing 很好用，直到 runtime 自己也要检测能力
 // 比如 for...of：runtime 必须判断「这个对象能不能迭代」

@@ -70,7 +70,8 @@ const arr1 = [1, 2, 3]
 const arr2 = [4, 5, 6]
 arr2[Symbol.isConcatSpreadable] = false
 
-console.log('arr1.concat(arr2):', arr1.concat(arr2))  // [1, 2, 3, [4, 5, 6]]
+// arr2 未被展开，整体作为 arr1 的一个元素（Node 会连带打印其 isConcatSpreadable: false 标记）
+console.log('arr1.concat(arr2):', arr1.concat(arr2))  // [1, 2, 3, [4, 5, 6, Symbol(isConcatSpreadable): false]]
 
 
 console.log('\n=== 6. Symbol.species：控制派生对象构造 ===\n')
