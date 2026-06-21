@@ -1,6 +1,8 @@
 # null 自测题
 
-## 读懂题
+## 一、复述讲解
+
+> 费曼第二步：看代码，用规范术语讲清行为。本组都是规范直陈，输出不会因混淆答错——答得出外在表现才算入门。
 
 **题目 1**
 ```javascript
@@ -15,7 +17,8 @@ console.log(a === b);
 <summary>查看答案</summary>
 
 **答案：** `undefined`, `null`, `false`
-**考察点：** 未赋值变量得到 `undefined`，显式赋 `null` 是程序员的主动声明，两者类型不同所以 `===` 为 `false`
+
+**考察点：** `let a;` 未赋值，引擎自动填 `undefined`；`b = null` 是程序员主动声明的空值。两者 ECMA 类型不同（`Type(null)` 为 `Null`，`Type(undefined)` 为 `Undefined`），IsStrictlyEqual 因 Type 不同返回 `false`。
 
 </details>
 
@@ -31,7 +34,8 @@ console.log(typeof undefined);
 <summary>查看答案</summary>
 
 **答案：** `"object"`, `"undefined"`
-**考察点：** `typeof null` 返回 `"object"` 是历史 Bug（类型标签 `0` 撞车），不是 `null` 真的是对象
+
+**考察点：** `typeof null` 返回 `"object"` 是实现事故——早期引擎类型标签 `0` 与对象撞车，非设计意图。规范真相是 `Type(null)` 为 `Null`（§6.1 The Null Type），与 `Object` 同级；`null` 无属性无原型，`null.foo` 抛 TypeError。修复提议因兼容性被拒。
 
 </details>
 
@@ -47,7 +51,8 @@ console.log(1 + undefined);
 <summary>查看答案</summary>
 
 **答案：** `1`, `NaN`
-**考察点：** ToNumber 分裂——`null → 0`（可计算），`undefined → NaN`（不可计算）
+
+**考察点：** `+` 运算对操作数调用 ToNumber。`ToNumber(null)` = `0`（可计算的空），`ToNumber(undefined)` = `NaN`（不可计算的未知）。于是 `1 + null` 得 `1`，`1 + undefined` 得 `NaN`。
 
 </details>
 
@@ -66,7 +71,8 @@ console.log(null == '');
 <summary>查看答案</summary>
 
 **答案：** `true`, `false`, `false`, `false`, `false`
-**考察点：** Abstract Equality 为 null/undefined 设了专属分支（Step 2/3），但 `null` 不等于任何其他值
+
+**考察点：** IsLooselyEqual（`==`）开头 Step 2/3 为 null/undefined 开专属分支：一方为 `null`、另一方为 `undefined` 直接返回 `true`，不进入转换链——故 `null == undefined` 为 `true`。其余情况 `null` 拒绝进入通用 ToNumber 转换，不与 `0`、`false`、`''` 相等。IsStrictlyEqual（`===`）因 `Type(null)` ≠ `Type(undefined)` 返回 `false`。
 
 </details>
 
@@ -81,13 +87,16 @@ console.log(Object.getPrototypeOf(Object.prototype));
 <summary>查看答案</summary>
 
 **答案：** `null`
-**考察点：** 原型链以 `null` 作为终点——表示"主动终止"，不是"未初始化"
+
+**考察点：** `Object.prototype` 的 `[[Prototype]]` 内部槽为 `null`——原型链主动终止，表达"到此为止"，不是"未初始化"。故用 `null` 而非 `undefined`。
 
 </details>
 
 ---
 
-## 想通题
+## 二、暴露盲区
+
+> 费曼第三步：陷阱场景探测概念混淆。本组每题的输出都与常见误解相反——做错说明有地方没真懂，回 `articles/` 对应章节重看。
 
 **题目 6**
 ```javascript
@@ -101,7 +110,10 @@ console.log(null ?? 'default');
 <summary>查看答案</summary>
 
 **答案：** `"default"`, `0`, `"default"`, `"default"`
-**考察点：** `||` 基于 ToBoolean（`0` 是 falsy 被替换），`??` 基于 IsNullOrUndefined（`0` 是合法值被保留）
+
+**考察点：** `||` 基于 ToBoolean，`0` 是 falsy 被替换；`??` 基于 IsNullOrUndefined，`0` 不是 nullish 被保留。
+
+**盲区：** 把 `??` 当 `||` 用，`0`、`''`、`false` 这类合法 falsy 值会被误替换。
 
 </details>
 
@@ -109,26 +121,7 @@ console.log(null ?? 'default');
 
 **题目 7**
 ```javascript
-const user = null;
-console.log(user?.address?.city);
-console.log(user?.address?.city ?? 'Unknown');
-```
-
-<details>
-<summary>查看答案</summary>
-
-**答案：** `undefined`, `"Unknown"`
-**考察点：** `?.` 遇到 null 短路返回 `undefined`，`??` 对 nullish 值提供默认值
-
-</details>
-
----
-
-**题目 8**
-```javascript
-function greet(name = 'Guest') {
-  return `Hello, ${name}`;
-}
+function greet(name = 'Guest') { return `Hello, ${name}`; }
 console.log(greet(undefined));
 console.log(greet(null));
 ```
@@ -137,13 +130,16 @@ console.log(greet(null));
 <summary>查看答案</summary>
 
 **答案：** `"Hello, Guest"`, `"Hello, null"`
-**考察点：** 参数默认值只对 `undefined` 生效。`null` 是"明确传了空值"，保留。
+
+**考察点：** 参数默认值仅当实参为 `undefined` 时触发——`undefined`（含不传）走默认值，`null` 是"明确传了空值"被保留。
+
+**盲区：** 以为传 `null` 等于没传、会走默认值。默认值只认 `undefined`，不认 `null`。
 
 </details>
 
 ---
 
-**题目 9**
+**题目 8**
 ```javascript
 const dict = Object.create(null);
 dict.__proto__ = 'evil';
@@ -155,13 +151,16 @@ console.log(dict instanceof Object);
 <summary>查看答案</summary>
 
 **答案：** `"evil"`, `false`
-**考察点：** `Object.create(null)` 切断原型链。`__proto__` 只是普通属性，`instanceof` 无法沿原型链找到 `Object.prototype`
+
+**考察点：** `Object.create(null)` 使对象的 `[[Prototype]]` 为 `null`，切断原型链。`__proto__` 降为普通自有属性（赋值不改原型），`instanceof` 沿空原型链找不到 `Object.prototype`。
+
+**盲区：** 以为 `__proto__` 一定改原型、`instanceof` 一定为 `true`。
 
 </details>
 
 ---
 
-**题目 10**
+**题目 9**
 ```javascript
 console.log(JSON.stringify({ a: undefined, b: null }));
 console.log(JSON.stringify([undefined, null]));
@@ -171,165 +170,75 @@ console.log(JSON.stringify([undefined, null]));
 <summary>查看答案</summary>
 
 **答案：** `'{"b":null}'`, `'[null,null]'`
-**考察点：** JSON 中——对象属性的 `undefined` 被忽略，数组中的 `undefined` 被替换为 `null`（SerializeJSONArray 规范要求），`null` 始终保留
+
+**考察点：** 对象属性的 `undefined` 被 SerializeJSONProperty 忽略（返回 `undefined` 不输出该属性）；数组元素的 `undefined` 被 SerializeJSONArray 替换为 `"null"`；`null` 始终保留。
+
+**盲区：** 以为 `undefined` 要么全忽略要么全变 `null`，实际对象与数组两种处理。
 
 </details>
 
 ---
+
+**题目 10**
+```javascript
+const map = new Map();
+map.set('count', 0);
+
+const count = map.get('count');      // 值为 0
+const missing = map.get('missing');  // 值为？
+
+console.log(count || 'missing');
+console.log(count ?? 'missing');
+console.log(missing ?? 'missing');
+console.log(Boolean(count));   // 拿来判"key 是否存在"靠谱吗？
+```
+
+<details>
+<summary>查看答案</summary>
+
+**答案：** `'missing'`, `0`, `'missing'`, `false`
+
+**考察点：** `Map.get()` 缺失返回 `undefined`（不是 `null`）。用 `||` 或 truthiness 判存在性会误伤 `0`——`Boolean(0)` 为 `false`，把"存在且值为 0"误判成"不存在"。
+
+**盲区：** 用 `if (value)` / `||` 判 Map key 是否存在，`0`、`''`、`false` 被误杀。正确做法：`map.has(key)` 或 `!== undefined` 或 `??`。
+
+</details>
 
 ---
 
 **题目 11**
 ```typescript
-type User = {
-  name: string | null;
-  email?: string;
-  age: number | undefined;
-}
-
-const user1: User = { name: null, age: undefined }
-const user2: User = { name: 'Alice', email: undefined, age: 25 }
-const user3: User = { name: 'Bob', age: 30 }  // 能编译吗？
-```
-
-<details>
-<summary>查看答案</summary>
-
-**答案：**
-- `user1` ✓ 合法。`name` 允许 `null`，`age` 允许 `undefined`
-- `user2` ✓ 合法。`email` 是可选字段，传 `undefined` 等于不传
-- `user3` ✓ 合法。`email` 是可选字段，可以省略
-
-**考察点：**
-- `T | null` = 明确为空（程序员主动赋值）
-- `T | undefined` = 可能缺席（引擎信号或可选字段）
-- `?` 可选属性 = 该字段可能不存在，值自动为 `undefined`
-
-</details>
-
----
-
-**题目 12**
-```typescript
-function findUser(id: number): User | null {
-  // 实现 A
-  if (id === 1) return { name: 'Alice', age: 30 }
-  return null  // 查不到
-}
-
-function getConfig(key: string): string | undefined {
-  // 实现 B
-  const map: Record<string, string> = {}
-  return map[key]  // 属性不存在返回 undefined
-}
-
-const user = findUser(999)  // 类型是什么？
-const config = getConfig('db')  // 类型是什么？
-```
-
-<details>
-<summary>查看答案</summary>
-
-**答案：**
-- `user` 类型：`User | null`
-- `config` 类型：`string | undefined`
-
-**考察点：**
-- 函数返回 `null` = 明确查过，没有结果（业务语义）
-- 属性访问返回 `undefined` = 引擎告知的缺失（系统信号）
-- 这两种"没有值"在类型系统中应该区分
-
-</details>
-
----
-
-**题目 13**
-```typescript
-// 以下哪个类型定义最准确？
+// API 返回固定结构，但 data 可能"查过且无值"。哪个类型定义最准？
+//
 // 选项 A
-type ApiResponse = {
-  data: User | null;
-  error: string | null;
-}
-
+type ApiResponseA = { data: User | null; error: string | null; };
 // 选项 B
-type ApiResponse = {
-  data?: User;
-  error?: string;
-}
-
+type ApiResponseB = { data?: User; error?: string; };
 // 选项 C
-type ApiResponse = {
-  data: User | undefined;
-  error: string | undefined;
-}
+type ApiResponseC = { data: User | undefined; error: string | undefined; };
 ```
 
 <details>
 <summary>查看答案</summary>
 
-**答案：** 选项 A 最准确
+**答案：** 选项 A
 
 **分析：**
-- **选项 A**（✓）：`data` 和 `error` 字段**始终存在**，但值可能为空。API 响应结构是确定的，只是某些字段可能没有值。
-- **选项 B**（✗）：`data?` 和 `error?` 表示字段**可能不存在**。这会误导：API 响应格式应该是确定的，不应该时有时无。
-- **选项 C**（✗）：`undefined` 表示"可能缺席"，但 API 响应中明确返回 `null` 表示"查询过了，没有结果"。
+- **选项 A**（✓）：字段始终存在，值可能为空。API 响应结构确定，用 `| null` 表示"值属于模型，但当前为空"。
+- **选项 B**（✗）：`?` 表示字段可能不存在，误导成"结构不确定"。
+- **选项 C**（✗）：`| undefined` 表示"可能缺席"，而 API 明确返回 `null` 表示"查过了，没结果"。
 
-**考察点：**
-- `null` 用于明确表示"值属于模型，但当前为空"
-- `undefined` 或 `?` 用于表示"值可能根本不属于当前模型"
-- API 响应、数据库查询结果：用 `null`（明确查过，没有）
-- 配置项、可选参数：用 `undefined` 或 `?`（可能没传）
+**盲区：** 把"字段值为空"（用 `null`）和"字段缺席"（用 `?`/`undefined`）混了。
 
 </details>
 
 ---
 
-**题目 14**
-```typescript
-// 实际开发中的陷阱
-const map = new Map<string, number>()
-map.set('count', 0)
+## 三、简化输出
 
-const count = map.get('count')      // 类型是什么？
-const missing = map.get('missing')  // 类型是什么？
+> 费曼第四步：手写实现或用大白话教别人。能造出来、讲明白才算真懂——背术语不算。
 
-if (count) {
-  console.log('count 存在')  // 会执行吗？
-}
-
-if (count !== undefined) {
-  console.log('count 存在')  // 会执行吗？
-}
-```
-
-<details>
-<summary>查看答案</summary>
-
-**答案：**
-- `count` 类型：`number | undefined`（值为 `0`）
-- `missing` 类型：`number | undefined`（值为 `undefined`）
-- `if (count)` → **不会执行**。`0` 是 falsy 值，被误判为"不存在"
-- `if (count !== undefined)` → **会执行**。正确判断"key 是否存在于 map 中"
-
-**考察点：**
-- `Map.get()` 返回 `undefined` 表示 key 不存在（不是 `null`）
-- 用 `||` 或 `if (value)` 判断会误伤 `0`、`''`、`false` 等 falsy 值
-- 正确做法：用 `map.has(key)` 或 `!== undefined` 或 `??`
-
-```js
-// 推荐写法
-if (map.has('count')) { ... }
-const count = map.get('count') ?? defaultValue
-```
-
-</details>
-
----
-
-## 写出题
-
-**题目 15**
+**题目 12**
 
 写一个函数 `getNestedValue(obj, path)`，安全获取嵌套对象属性，任意一层为 `null` 或 `undefined` 时返回默认值。
 
@@ -358,15 +267,15 @@ function getNestedValue(obj, path, defaultValue = undefined) {
 ```
 
 **自检：**
-- `current == null` 而不是 `=== null`？（利用 null == undefined 的专属分支）
+- `current == null` 而不是 `=== null`？（借 IsLooselyEqual 的 null/undefined 专属分支，一行覆盖两种空）
 - 路径拆分后逐层访问，任意一层 nullish 就返回默认值？
-- 最终值是 undefined 也返回默认值？
+- 最终值是 `undefined` 也返回默认值？
 
 </details>
 
 ---
 
-**题目 16**
+**题目 13**
 
 解释：为什么 `Object.create(null)` 创建的对象适合作为"纯净字典"？它和普通对象 `{}` 有什么本质区别？请写代码演示。
 
@@ -391,37 +300,62 @@ normal[userKey] = 'evil';  // 可能触发原型污染
 pure[userKey] = 'evil';    // 只是普通属性
 ```
 
-**本质：** 原型链以 `null` 为终点（ECMA-262 10.1.1.2），`Object.create(null)` 切断了原型链，没有 `toString`、`hasOwnProperty` 等继承属性，也不会被 `__proto__` 污染。当 key 来自用户输入时，这是唯一安全的选择。
+**本质：** `Object.prototype` 的 `[[Prototype]]` 槽为 `null`，`Object.create(null)` 生成的对象 `[[Prototype]]` 也为 `null`，切断了原型链——没有 `toString`、`hasOwnProperty` 等继承属性，也不会被 `__proto__` 污染。当 key 来自用户输入时，这是唯一安全的选择。（价值在安全性，不是性能。）
 
 </details>
 
 ---
 
-**题目 17**
+**题目 14**
 
-看代码，预测输出并解释原因：
+为下面两个函数设计返回类型，并说明为什么一个用 `null`、一个用 `undefined`。
 
-```js
-const map = new Map();
-map.set('a', 0);
+```ts
+function findUser(id: number): /* 你填 */ {
+  // 查数据库：查到返回 User，查不到……
+}
 
-console.log(map.get('a') || 'missing');
-console.log(map.get('a') ?? 'missing');
-console.log(map.get('b') || 'missing');
-console.log(map.get('b') ?? 'missing');
+function getConfig(key: string): /* 你填 */ {
+  // 从 Map 读：key 不存在时……
+}
 ```
 
 <details>
 <summary>查看参考答案</summary>
 
-**答案：** `'missing'`, `0`, `'missing'`, `'missing'`
+```ts
+function findUser(id: number): User | null {
+  // 查到 → User；查不到 → null（明确查过，无结果，业务语义的空）
+}
 
-**解释：**
-- `map.get('a')` 是 `0`，`||` 基于 ToBoolean，`0` 是 falsy → 被替换为 `'missing'`
-- `map.get('a')` 是 `0`，`??` 基于 IsNullOrUndefined，`0` 不是 null/undefined → 保留 `0`
-- `map.get('b')` 是 `undefined`，`||` 和 `??` 都替换 → `'missing'`
+function getConfig(key: string): string | undefined {
+  // Map.get 缺失返回 undefined（引擎告知的缺失，系统信号）
+}
+```
 
-**关键：** `||` 和 `??` 的分水岭是 ToBoolean vs IsNullOrUndefined。值为 `0`、`''`、`false` 时两者行为不同。
+**考察点：** 能区分"业务空"（用 `null`：我知道这里该有值，查过了，没有）与"系统缺失"（用 `undefined`：引擎说这里没有），并落到返回类型设计。
+
+</details>
+
+---
+
+**题目 15**
+
+用日常语言向一个刚学编程的新人讲清 `null` 和 `undefined` 的区别。
+
+**不许写代码，不许用规范术语**（ToNumber、falsy、原型链、抽象操作……都不许出现）。
+
+<details>
+<summary>查看参考讲解</summary>
+
+用储物柜打比方：
+
+- `undefined` 是「这个柜子从没人用过」。系统打开一看是空的，只能说「目前没东西」——它不知道这里本来该放什么。
+- `null` 是「有人打开柜子检查过，贴了张『确认为空』的标签」。人主动声明：我知道这里该有东西，但我确认过，现在是空的。
+
+前者是系统告诉你「不知道该有啥」，后者是人主动声明「我知道该有啥，但现在没有」。
+
+**考察点：** 费曼第四步——能用最朴素的话讲明白，才算真懂。讲不清说明还在背术语，没真正消化。
 
 </details>
 
@@ -429,6 +363,6 @@ console.log(map.get('b') ?? 'missing');
 
 ## 评分
 
-- **15-17/17：** 掌握良好
-- **12-14/17：** 基础扎实，错题对应章节重看
-- **11/17 以下：** 建议完整复习 `articles/`
+- **13-15/15：** 掌握良好
+- **10-12/15：** 基础扎实，错题对应章节重看
+- **9/15 以下：** 建议完整复习 `articles/`
