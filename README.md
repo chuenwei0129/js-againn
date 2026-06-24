@@ -86,33 +86,20 @@ node code/03-iterator.js   # 只跑你此刻想验证的那个
 
 **题量不固定：** 各概念的题数按对应 `articles/` 的覆盖面定，不强行拉齐。覆盖面窄的（如 symbol，核心是协议机制论辩、API 是附录）题少；覆盖面广的（如 undefined，三系统深挖 + Completion + 保留字 + void）题多。每组只留"能独立完成一次检验"的题，去掉同点重复——少而准，不是多而全。
 
-## ✅ 已完成的概念
+## 🗂️ 概念一览
 
-### Null
-- 📍 `concepts/null/`
-- 📝 自测题
-- 💻 7 个代码示例
-
-### Symbol
-- 📍 `concepts/symbol/`
-- 📝 自测题
-- 💻 5 个代码示例
-
-### Undefined
-- 📍 `concepts/undefined/`
-- 📝 自测题
-- 💻 6 个代码示例
-
-## 📚 待创建的概念
-
-按学习顺序：
-
-1. **Iterator & Generator** — 迭代器与生成器
-2. **Promise** — 异步编程核心
-3. **Closure** — 作用域与闭包
-4. **Prototype** — 原型链与继承
-5. **Proxy & Reflect** — 元编程
-6. **Type System** — 类型系统
+| 状态 | 概念 | 路径 | 文章 | 代码示例 | 自测题 |
+|------|------|------|------|---------|--------|
+| ✅ | **Null** | `concepts/null/` | 1 | 7 | ✅ |
+| ✅ | **Symbol** | `concepts/symbol/` | 1 | 5 | ✅ |
+| ✅ | **Undefined** | `concepts/undefined/` | 1 | 6 | ✅ |
+| ✅ | **String** | `concepts/string/` | 2 | 9 | — |
+| 🚧 | Iterator & Generator | — | — | — | — |
+| 🚧 | Promise | — | — | — | — |
+| 🚧 | Closure | — | — | — | — |
+| 🚧 | Prototype | — | — | — | — |
+| 🚧 | Proxy & Reflect | — | — | — | — |
+| 🚧 | Type System | — | — | — | — |
 
 ## 📜 许可
 
