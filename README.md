@@ -25,6 +25,7 @@ js-againn/
 ├── README.md              ← 你在这里
 ├── concepts/              ← 核心概念（结构化学习）
 │   ├── null/              ✅ 已完成
+│   ├── string/           ✅ 已完成
 │   ├── symbol/           ✅ 已完成
 │   ├── undefined/        ✅ 已完成
 │   ├── promise/          🚧 待创建
@@ -93,7 +94,7 @@ node code/03-iterator.js   # 只跑你此刻想验证的那个
 | ✅ | **Null** | `concepts/null/` | 1 | 7 | ✅ |
 | ✅ | **Symbol** | `concepts/symbol/` | 1 | 5 | ✅ |
 | ✅ | **Undefined** | `concepts/undefined/` | 1 | 6 | ✅ |
-| ✅ | **String** | `concepts/string/` | 2 | 9 | — |
+| ✅ | **String** | `concepts/string/` | 1 | 7 | ✅ |
 | 🚧 | Iterator & Generator | — | — | — | — |
 | 🚧 | Promise | — | — | — | — |
 | 🚧 | Closure | — | — | — | — |
